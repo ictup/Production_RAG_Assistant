@@ -9,7 +9,12 @@ from backend.app.rag.embeddings import EmbeddingClient, build_embedding_client
 from backend.app.rag.fusion import reciprocal_rank_fusion
 from backend.app.rag.generation import Generator, build_generator
 from backend.app.rag.prompts import build_rag_prompt
-from backend.app.rag.refusal import REFUSAL_ANSWER, RefusalInfo, should_refuse
+from backend.app.rag.refusal import (
+    REFUSAL_ANSWER,
+    RefusalInfo,
+    should_refuse,
+    should_refuse_question,
+)
 from backend.app.rag.reranking import Reranker, build_reranker
 from backend.app.rag.sparse_retrieval import SparseRetriever
 from backend.app.rag.vector_retrieval import VectorRetriever
@@ -87,6 +92,20 @@ class RagPipeline:
         fused_top_k = request.fused_top_k or self.settings.fused_top_k
         rerank_top_n = request.rerank_top_n or self.settings.rerank_top_n
 
+        question_refusal = should_refuse_question(request.question)
+        if question_refusal is not None:
+            return build_refusal_response(
+                refusal=question_refusal,
+                mode="question_guard",
+                vector_top_k=vector_top_k,
+                sparse_top_k=sparse_top_k,
+                fused_count=0,
+                top_score=None,
+                model=self.generator.model_name,
+                embedding_model=self.embedding_client.model_name,
+                started_at=started_at,
+            )
+
         query_embedding = await self.embedding_client.embed_query(request.question)
         vector_results = await VectorRetriever(self.session).retrieve(
             query_embedding=query_embedding,
@@ -109,24 +128,16 @@ class RagPipeline:
             threshold=self.settings.refusal_score_threshold,
         )
         if refusal is not None:
-            return ChatPipelineResponse(
-                answer=REFUSAL_ANSWER,
-                sources=[],
-                retrieval=build_retrieval_info(
-                    mode="hybrid_rrf",
-                    vector_top_k=vector_top_k,
-                    sparse_top_k=sparse_top_k,
-                    fused_count=len(fused_results),
-                    used_count=0,
-                    top_score=refusal.top_score,
-                ),
-                usage=build_usage_info(
-                    model=self.generator.model_name,
-                    embedding_model=self.embedding_client.model_name,
-                    started_at=started_at,
-                ),
-                citation_valid=None,
+            return build_refusal_response(
                 refusal=refusal,
+                mode="hybrid_rrf",
+                vector_top_k=vector_top_k,
+                sparse_top_k=sparse_top_k,
+                fused_count=len(fused_results),
+                top_score=refusal.top_score,
+                model=self.generator.model_name,
+                embedding_model=self.embedding_client.model_name,
+                started_at=started_at,
             )
 
         used_chunks = (
@@ -182,6 +193,39 @@ def build_retrieval_info(
         fused_count=fused_count,
         used_count=used_count,
         top_score=top_score,
+    )
+
+
+def build_refusal_response(
+    *,
+    refusal: RefusalInfo,
+    mode: str,
+    vector_top_k: int,
+    sparse_top_k: int,
+    fused_count: int,
+    top_score: float | None,
+    model: str,
+    embedding_model: str,
+    started_at: float,
+) -> ChatPipelineResponse:
+    return ChatPipelineResponse(
+        answer=REFUSAL_ANSWER,
+        sources=[],
+        retrieval=build_retrieval_info(
+            mode=mode,
+            vector_top_k=vector_top_k,
+            sparse_top_k=sparse_top_k,
+            fused_count=fused_count,
+            used_count=0,
+            top_score=top_score,
+        ),
+        usage=build_usage_info(
+            model=model,
+            embedding_model=embedding_model,
+            started_at=started_at,
+        ),
+        citation_valid=None,
+        refusal=refusal,
     )
 
 
