@@ -15,9 +15,15 @@ from ingestion.models import RawDocument
 
 
 class FakeAsyncSession:
-    def __init__(self, scalar_result: uuid.UUID | None = None) -> None:
+    def __init__(
+        self,
+        scalar_result: uuid.UUID | None = None,
+        scalars_result: list[Any] | None = None,
+    ) -> None:
         self.scalar_result = scalar_result
+        self.scalars_result = scalars_result or []
         self.scalar_statement: Any | None = None
+        self.scalars_statement: Any | None = None
         self.added: list[Any] = []
         self.added_all: list[Any] = []
         self.flushed = False
@@ -26,6 +32,10 @@ class FakeAsyncSession:
     async def scalar(self, statement: Any) -> uuid.UUID | None:
         self.scalar_statement = statement
         return self.scalar_result
+
+    async def scalars(self, statement: Any):
+        self.scalars_statement = statement
+        return FakeScalarResult(self.scalars_result)
 
     def add(self, instance: Any) -> None:
         self.added.append(instance)
@@ -38,6 +48,14 @@ class FakeAsyncSession:
 
     async def commit(self) -> None:
         self.committed = True
+
+
+class FakeScalarResult:
+    def __init__(self, rows: list[Any]) -> None:
+        self.rows = rows
+
+    def all(self) -> list[Any]:
+        return self.rows
 
 
 def make_raw_document() -> RawDocument:
@@ -247,3 +265,41 @@ async def test_create_chat_log_rejects_invalid_input(
 
     with pytest.raises(ValueError, match=error):
         await repository.create_chat_log(invalid_input)
+
+
+@pytest.mark.asyncio
+async def test_list_recent_chat_logs_filters_workspace_and_limits_results() -> None:
+    chat_log = ChatLog(
+        request_id="request-1",
+        workspace_id="public",
+        question="What is FlashAttention?",
+        answer="FlashAttention is IO-aware. [1]",
+        sources=[],
+        retrieval={},
+        usage={},
+        refusal=None,
+        citation_valid=True,
+        latency_ms=12,
+    )
+    session = FakeAsyncSession(scalars_result=[chat_log])
+    repository = ChatLogRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.list_recent_chat_logs(
+        workspace_id=" public ",
+        limit=3,
+    )
+
+    assert result == [chat_log]
+    assert session.scalars_statement is not None
+    compiled = str(session.scalars_statement)
+    assert "chat_logs.workspace_id" in compiled
+    assert "ORDER BY chat_logs.created_at DESC" in compiled
+
+
+@pytest.mark.asyncio
+async def test_list_recent_chat_logs_rejects_invalid_limit() -> None:
+    session = FakeAsyncSession()
+    repository = ChatLogRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="limit"):
+        await repository.list_recent_chat_logs(limit=0)

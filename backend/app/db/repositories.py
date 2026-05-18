@@ -171,3 +171,21 @@ class ChatLogRepository:
         if commit:
             await self.session.commit()
         return chat_log
+
+    async def list_recent_chat_logs(
+        self,
+        *,
+        workspace_id: str = "public",
+        limit: int = 10,
+    ) -> list[ChatLog]:
+        workspace_id = workspace_id.strip() or "public"
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+
+        statement = (
+            select(ChatLog)
+            .where(ChatLog.workspace_id == workspace_id)
+            .order_by(ChatLog.created_at.desc())
+            .limit(limit)
+        )
+        return list((await self.session.scalars(statement)).all())
