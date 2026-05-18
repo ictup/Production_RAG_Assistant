@@ -1,5 +1,9 @@
+from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, Field, field_validator
 
+from backend.app.db.models import ChatLog
 from backend.app.rag.citations import Source
 from backend.app.rag.pipeline import (
     ChatPipelineRequest,
@@ -62,4 +66,55 @@ class ChatResponse(BaseModel):
             request_id=request_id,
             citation_valid=response.citation_valid,
             refusal=response.refusal,
+        )
+
+
+class ChatLogItem(BaseModel):
+    id: str
+    request_id: str
+    workspace_id: str
+    question: str
+    answer: str
+    sources: list[dict[str, Any]]
+    retrieval: dict[str, Any]
+    usage: dict[str, Any]
+    refusal: dict[str, Any] | None
+    citation_valid: bool | None
+    latency_ms: int
+    created_at: datetime
+
+    @classmethod
+    def from_model(cls, chat_log: ChatLog) -> "ChatLogItem":
+        return cls(
+            id=str(chat_log.id),
+            request_id=chat_log.request_id,
+            workspace_id=chat_log.workspace_id,
+            question=chat_log.question,
+            answer=chat_log.answer,
+            sources=list(chat_log.sources),
+            retrieval=dict(chat_log.retrieval),
+            usage=dict(chat_log.usage),
+            refusal=dict(chat_log.refusal) if chat_log.refusal is not None else None,
+            citation_valid=chat_log.citation_valid,
+            latency_ms=chat_log.latency_ms,
+            created_at=chat_log.created_at,
+        )
+
+
+class ChatLogsResponse(BaseModel):
+    workspace_id: str
+    count: int
+    logs: list[ChatLogItem]
+
+    @classmethod
+    def from_logs(
+        cls,
+        *,
+        workspace_id: str,
+        logs: list[ChatLog],
+    ) -> "ChatLogsResponse":
+        return cls(
+            workspace_id=workspace_id,
+            count=len(logs),
+            logs=[ChatLogItem.from_model(log) for log in logs],
         )

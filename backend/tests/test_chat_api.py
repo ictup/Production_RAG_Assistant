@@ -1,6 +1,10 @@
+import uuid
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 
 from backend.app.api import routes_chat
+from backend.app.db.models import ChatLog
 from backend.app.db.repositories import CreateChatLogInput
 from backend.app.main import create_app
 from backend.app.observability.metrics import metrics_registry
@@ -62,9 +66,11 @@ class FakePipeline:
 
 
 class FakeChatLogRepository:
-    def __init__(self) -> None:
+    def __init__(self, recent_logs: list[ChatLog] | None = None) -> None:
         self.inputs: list[CreateChatLogInput] = []
         self.commit_flags: list[bool] = []
+        self.recent_logs = recent_logs or []
+        self.list_calls: list[tuple[str, int]] = []
 
     async def create_chat_log(
         self,
@@ -75,6 +81,15 @@ class FakeChatLogRepository:
         self.inputs.append(log_input)
         self.commit_flags.append(commit)
 
+    async def list_recent_chat_logs(
+        self,
+        *,
+        workspace_id: str = "public",
+        limit: int = 10,
+    ) -> list[ChatLog]:
+        self.list_calls.append((workspace_id, limit))
+        return self.recent_logs
+
 
 def make_source() -> Source:
     return Source(
@@ -84,6 +99,23 @@ def make_source() -> Source:
         source_uri="llm_systems/flashattention.md",
         chunk_id="chunk-1",
         score=0.42,
+    )
+
+
+def make_chat_log_model() -> ChatLog:
+    return ChatLog(
+        id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+        request_id="request-1",
+        workspace_id="tenant-a",
+        question="What problem does FlashAttention solve?",
+        answer="FlashAttention reduces memory traffic. [1]",
+        sources=[{"source_id": "1", "title": "FlashAttention Notes"}],
+        retrieval={"mode": "hybrid_rrf_rerank"},
+        usage={"model": "fake-llm", "latency_ms": 12},
+        refusal=None,
+        citation_valid=True,
+        latency_ms=12,
+        created_at=datetime(2026, 5, 18, 8, 0, tzinfo=UTC),
     )
 
 
@@ -286,3 +318,74 @@ def test_openapi_exposes_chat_route() -> None:
 
     assert response.status_code == 200
     assert "/chat" in response.json()["paths"]
+
+
+def test_chat_logs_route_returns_recent_logs_for_workspace() -> None:
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository(
+        recent_logs=[make_chat_log_model()]
+    )
+    client = build_client(fake_pipeline, fake_chat_log_repository)
+
+    response = client.get(
+        "/chat/logs",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "  tenant-a  ",
+        },
+        params={"limit": 3},
+    )
+
+    assert response.status_code == 200
+    assert fake_chat_log_repository.list_calls == [("tenant-a", 3)]
+    body = response.json()
+    assert body["workspace_id"] == "tenant-a"
+    assert body["count"] == 1
+    assert body["logs"][0]["id"] == "11111111-1111-1111-1111-111111111111"
+    assert body["logs"][0]["request_id"] == "request-1"
+    assert body["logs"][0]["question"] == "What problem does FlashAttention solve?"
+    assert body["logs"][0]["citation_valid"] is True
+    assert body["logs"][0]["sources"][0]["source_id"] == "1"
+
+
+def test_chat_logs_route_defaults_workspace_to_public() -> None:
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_pipeline, fake_chat_log_repository)
+
+    response = client.get("/chat/logs", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    assert fake_chat_log_repository.list_calls == [("public", 10)]
+    assert response.json() == {
+        "workspace_id": "public",
+        "count": 0,
+        "logs": [],
+    }
+
+
+def test_chat_logs_route_requires_api_key() -> None:
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_pipeline, fake_chat_log_repository)
+
+    response = client.get("/chat/logs")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "missing api key"}
+    assert fake_chat_log_repository.list_calls == []
+
+
+def test_chat_logs_route_rejects_invalid_limit() -> None:
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_pipeline, fake_chat_log_repository)
+
+    response = client.get(
+        "/chat/logs",
+        headers=AUTH_HEADERS,
+        params={"limit": 0},
+    )
+
+    assert response.status_code == 422
+    assert fake_chat_log_repository.list_calls == []

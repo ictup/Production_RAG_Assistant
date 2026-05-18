@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.security import require_api_key
@@ -9,7 +9,7 @@ from backend.app.db.repositories import ChatLogRepository, CreateChatLogInput
 from backend.app.db.session import get_db_session
 from backend.app.observability.metrics import metrics_registry
 from backend.app.rag.pipeline import ChatPipelineResponse, RagPipeline
-from backend.app.schemas.chat import ChatRequest, ChatResponse
+from backend.app.schemas.chat import ChatLogsResponse, ChatRequest, ChatResponse
 
 router = APIRouter(tags=["chat"])
 
@@ -94,4 +94,25 @@ async def chat(
     return ChatResponse.from_pipeline_response(
         response,
         request_id=request_id,
+    )
+
+
+@router.get("/chat/logs", response_model=ChatLogsResponse)
+async def list_chat_logs(
+    _api_key: Annotated[str, Depends(require_api_key)],
+    chat_log_repository: Annotated[
+        ChatLogRepository,
+        Depends(get_chat_log_repository),
+    ],
+    workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+) -> ChatLogsResponse:
+    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    logs = await chat_log_repository.list_recent_chat_logs(
+        workspace_id=normalized_workspace_id,
+        limit=limit,
+    )
+    return ChatLogsResponse.from_logs(
+        workspace_id=normalized_workspace_id,
+        logs=logs,
     )
