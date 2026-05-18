@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.security import require_api_key
+from backend.app.core.request_id import get_request_id
 from backend.app.db.session import get_db_session
 from backend.app.rag.pipeline import RagPipeline
 from backend.app.schemas.chat import ChatRequest, ChatResponse
@@ -27,6 +28,7 @@ def normalize_workspace_id(workspace_id: str | None) -> str:
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
+    http_request: Request,
     request: ChatRequest,
     _api_key: Annotated[str, Depends(require_api_key)],
     pipeline: Annotated[RagPipeline, Depends(get_rag_pipeline)],
@@ -37,4 +39,7 @@ async def chat(
             workspace_id=normalize_workspace_id(workspace_id),
         )
     )
-    return ChatResponse.from_pipeline_response(response)
+    return ChatResponse.from_pipeline_response(
+        response,
+        request_id=get_request_id(http_request),
+    )

@@ -86,6 +86,7 @@ def test_chat_route_returns_answer_sources_and_metadata() -> None:
     assert body["sources"][0]["source_id"] == "1"
     assert body["retrieval"]["mode"] == "hybrid_rrf_rerank"
     assert body["usage"]["model"] == "test-fake-llm"
+    assert body["request_id"] == response.headers["X-Request-ID"]
     assert body["citation_valid"] is True
 
     assert len(fake_pipeline.requests) == 1
@@ -111,6 +112,24 @@ def test_chat_route_defaults_workspace_to_public() -> None:
 
     assert response.status_code == 200
     assert fake_pipeline.requests[0].workspace_id == "public"
+
+
+def test_chat_route_uses_client_request_id() -> None:
+    fake_pipeline = FakePipeline()
+    client = build_client(fake_pipeline)
+
+    response = client.post(
+        "/chat",
+        headers={
+            **AUTH_HEADERS,
+            "X-Request-ID": "  client-request-123  ",
+        },
+        json={"question": "What is FlashAttention?"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["request_id"] == "client-request-123"
+    assert response.headers["X-Request-ID"] == "client-request-123"
 
 
 def test_chat_route_rejects_blank_question() -> None:

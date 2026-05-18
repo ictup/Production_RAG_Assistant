@@ -43,6 +43,7 @@ class ChatResponse(BaseModel):
     sources: list[Source]
     retrieval: RetrievalInfo
     usage: UsageInfo
+    request_id: str
     citation_valid: bool | None
     refusal: RefusalInfo | None = None
 
@@ -50,12 +51,15 @@ class ChatResponse(BaseModel):
     def from_pipeline_response(
         cls,
         response: ChatPipelineResponse,
+        *,
+        request_id: str,
     ) -> "ChatResponse":
         return cls(
             answer=response.answer,
             sources=response.sources,
             retrieval=response.retrieval,
             usage=response.usage,
+            request_id=request_id,
             citation_valid=response.citation_valid,
             refusal=response.refusal,
         )
