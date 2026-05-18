@@ -134,7 +134,12 @@ class ChatLogRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def create_chat_log(self, log_input: CreateChatLogInput) -> ChatLog:
+    async def create_chat_log(
+        self,
+        log_input: CreateChatLogInput,
+        *,
+        commit: bool = False,
+    ) -> ChatLog:
         request_id = log_input.request_id.strip()
         workspace_id = log_input.workspace_id.strip() or "public"
         question = log_input.question.strip()
@@ -163,4 +168,6 @@ class ChatLogRepository:
         )
         self.session.add(chat_log)
         await self.session.flush()
+        if commit:
+            await self.session.commit()
         return chat_log

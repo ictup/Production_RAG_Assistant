@@ -21,6 +21,7 @@ class FakeAsyncSession:
         self.added: list[Any] = []
         self.added_all: list[Any] = []
         self.flushed = False
+        self.committed = False
 
     async def scalar(self, statement: Any) -> uuid.UUID | None:
         self.scalar_statement = statement
@@ -34,6 +35,9 @@ class FakeAsyncSession:
 
     async def flush(self) -> None:
         self.flushed = True
+
+    async def commit(self) -> None:
+        self.committed = True
 
 
 def make_raw_document() -> RawDocument:
@@ -202,6 +206,18 @@ async def test_create_chat_log_adds_chat_log_model() -> None:
     assert chat_log.latency_ms == 12
     assert session.added == [chat_log]
     assert session.flushed is True
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_create_chat_log_can_commit_transaction() -> None:
+    session = FakeAsyncSession()
+    repository = ChatLogRepository(session)  # type: ignore[arg-type]
+
+    await repository.create_chat_log(make_chat_log_input(), commit=True)
+
+    assert session.flushed is True
+    assert session.committed is True
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from backend.app.api import routes_chat
+from backend.app.db.repositories import CreateChatLogInput
 from backend.app.main import create_app
 from backend.app.observability.metrics import metrics_registry
 from backend.app.rag.citations import Source
@@ -60,6 +61,21 @@ class FakePipeline:
         )
 
 
+class FakeChatLogRepository:
+    def __init__(self) -> None:
+        self.inputs: list[CreateChatLogInput] = []
+        self.commit_flags: list[bool] = []
+
+    async def create_chat_log(
+        self,
+        log_input: CreateChatLogInput,
+        *,
+        commit: bool = False,
+    ) -> None:
+        self.inputs.append(log_input)
+        self.commit_flags.append(commit)
+
+
 def make_source() -> Source:
     return Source(
         source_id="1",
@@ -71,15 +87,23 @@ def make_source() -> Source:
     )
 
 
-def build_client(fake_pipeline: FakePipeline) -> TestClient:
+def build_client(
+    fake_pipeline: FakePipeline,
+    fake_chat_log_repository: FakeChatLogRepository | None = None,
+) -> TestClient:
+    fake_chat_log_repository = fake_chat_log_repository or FakeChatLogRepository()
     app = create_app()
     app.dependency_overrides[routes_chat.get_rag_pipeline] = lambda: fake_pipeline
+    app.dependency_overrides[routes_chat.get_chat_log_repository] = (
+        lambda: fake_chat_log_repository
+    )
     return TestClient(app)
 
 
 def test_chat_route_returns_answer_sources_and_metadata() -> None:
     fake_pipeline = FakePipeline()
-    client = build_client(fake_pipeline)
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_pipeline, fake_chat_log_repository)
 
     response = client.post(
         "/chat",
@@ -116,6 +140,20 @@ def test_chat_route_returns_answer_sources_and_metadata() -> None:
     assert pipeline_request.rerank_top_n == 2
     assert pipeline_request.rerank is False
 
+    assert len(fake_chat_log_repository.inputs) == 1
+    assert fake_chat_log_repository.commit_flags == [True]
+    chat_log_input = fake_chat_log_repository.inputs[0]
+    assert chat_log_input.request_id == body["request_id"]
+    assert chat_log_input.workspace_id == "tenant-a"
+    assert chat_log_input.question == "What problem does FlashAttention solve?"
+    assert chat_log_input.answer == body["answer"]
+    assert chat_log_input.sources == body["sources"]
+    assert chat_log_input.retrieval == body["retrieval"]
+    assert chat_log_input.usage == body["usage"]
+    assert chat_log_input.refusal is None
+    assert chat_log_input.citation_valid is True
+    assert chat_log_input.latency_ms == body["usage"]["latency_ms"]
+
 
 def test_chat_route_defaults_workspace_to_public() -> None:
     fake_pipeline = FakePipeline()
@@ -133,7 +171,8 @@ def test_chat_route_defaults_workspace_to_public() -> None:
 
 def test_chat_route_uses_client_request_id() -> None:
     fake_pipeline = FakePipeline()
-    client = build_client(fake_pipeline)
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_pipeline, fake_chat_log_repository)
 
     response = client.post(
         "/chat",
@@ -147,11 +186,13 @@ def test_chat_route_uses_client_request_id() -> None:
     assert response.status_code == 200
     assert response.json()["request_id"] == "client-request-123"
     assert response.headers["X-Request-ID"] == "client-request-123"
+    assert fake_chat_log_repository.inputs[0].request_id == "client-request-123"
 
 
 def test_chat_route_rejects_blank_question() -> None:
     fake_pipeline = FakePipeline()
-    client = build_client(fake_pipeline)
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_pipeline, fake_chat_log_repository)
 
     response = client.post(
         "/chat",
@@ -161,11 +202,13 @@ def test_chat_route_rejects_blank_question() -> None:
 
     assert response.status_code == 422
     assert fake_pipeline.requests == []
+    assert fake_chat_log_repository.inputs == []
 
 
 def test_chat_route_rejects_missing_api_key() -> None:
     fake_pipeline = FakePipeline()
-    client = build_client(fake_pipeline)
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_pipeline, fake_chat_log_repository)
 
     response = client.post(
         "/chat",
@@ -175,11 +218,13 @@ def test_chat_route_rejects_missing_api_key() -> None:
     assert response.status_code == 401
     assert response.json() == {"detail": "missing api key"}
     assert fake_pipeline.requests == []
+    assert fake_chat_log_repository.inputs == []
 
 
 def test_chat_route_rejects_invalid_api_key() -> None:
     fake_pipeline = FakePipeline()
-    client = build_client(fake_pipeline)
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_pipeline, fake_chat_log_repository)
 
     response = client.post(
         "/chat",
@@ -190,6 +235,7 @@ def test_chat_route_rejects_invalid_api_key() -> None:
     assert response.status_code == 401
     assert response.json() == {"detail": "invalid api key"}
     assert fake_pipeline.requests == []
+    assert fake_chat_log_repository.inputs == []
 
 
 def test_chat_route_records_refusal_metric() -> None:
