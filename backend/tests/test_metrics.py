@@ -56,6 +56,26 @@ def test_metrics_registry_records_request_count_and_latency_histogram() -> None:
     )
 
 
+def test_metrics_registry_records_rag_business_metrics() -> None:
+    registry = MetricsRegistry()
+
+    registry.observe_rag_response(
+        refusal_reason="no_retrieved_chunks",
+        citation_valid=None,
+    )
+    registry.observe_rag_response(
+        refusal_reason=None,
+        citation_valid=False,
+    )
+
+    output = registry.render_prometheus()
+    assert_metric_line(
+        output,
+        'rag_refusals_total{reason="no_retrieved_chunks"} 1',
+    )
+    assert_metric_line(output, "rag_citation_invalid_total 1")
+
+
 def test_metrics_route_returns_prometheus_text() -> None:
     metrics_registry.reset()
     metrics_registry.observe_http_request(

@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.api import routes_chat
 from backend.app.main import create_app
+from backend.app.observability.metrics import metrics_registry
 from backend.app.rag.citations import Source
 from backend.app.rag.pipeline import (
     ChatPipelineRequest,
@@ -9,31 +10,36 @@ from backend.app.rag.pipeline import (
     RetrievalInfo,
     UsageInfo,
 )
+from backend.app.rag.refusal import REFUSAL_ANSWER, RefusalInfo
 
 AUTH_HEADERS = {"Authorization": "Bearer dev-key"}
 
 
 class FakePipeline:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        citation_valid: bool | None = True,
+        refusal: RefusalInfo | None = None,
+    ) -> None:
         self.requests: list[ChatPipelineRequest] = []
+        self.citation_valid = citation_valid
+        self.refusal = refusal
 
     async def answer_question(
         self,
         request: ChatPipelineRequest,
     ) -> ChatPipelineResponse:
         self.requests.append(request)
+        is_refusal = self.refusal is not None
+        answer = (
+            REFUSAL_ANSWER
+            if is_refusal
+            else "FlashAttention reduces memory traffic. [1]"
+        )
         return ChatPipelineResponse(
-            answer="FlashAttention reduces memory traffic. [1]",
-            sources=[
-                Source(
-                    source_id="1",
-                    title="FlashAttention Notes",
-                    section="FlashAttention",
-                    source_uri="llm_systems/flashattention.md",
-                    chunk_id="chunk-1",
-                    score=0.42,
-                )
-            ],
+            answer=answer,
+            sources=[] if is_refusal else [make_source()],
             retrieval=RetrievalInfo(
                 mode="hybrid_rrf_rerank",
                 vector_top_k=request.vector_top_k or 20,
@@ -49,9 +55,20 @@ class FakePipeline:
                 input_tokens=10,
                 output_tokens=5,
             ),
-            citation_valid=True,
-            refusal=None,
+            citation_valid=self.citation_valid,
+            refusal=self.refusal,
         )
+
+
+def make_source() -> Source:
+    return Source(
+        source_id="1",
+        title="FlashAttention Notes",
+        section="FlashAttention",
+        source_uri="llm_systems/flashattention.md",
+        chunk_id="chunk-1",
+        score=0.42,
+    )
 
 
 def build_client(fake_pipeline: FakePipeline) -> TestClient:
@@ -173,6 +190,46 @@ def test_chat_route_rejects_invalid_api_key() -> None:
     assert response.status_code == 401
     assert response.json() == {"detail": "invalid api key"}
     assert fake_pipeline.requests == []
+
+
+def test_chat_route_records_refusal_metric() -> None:
+    metrics_registry.reset()
+    fake_pipeline = FakePipeline(
+        citation_valid=None,
+        refusal=RefusalInfo(
+            reason="no_retrieved_chunks",
+            top_score=None,
+            threshold=0.01,
+        ),
+    )
+    client = build_client(fake_pipeline)
+
+    response = client.post(
+        "/chat",
+        headers=AUTH_HEADERS,
+        json={"question": "What is an unrelated topic?"},
+    )
+
+    assert response.status_code == 200
+    assert (
+        'rag_refusals_total{reason="no_retrieved_chunks"} 1'
+        in metrics_registry.render_prometheus()
+    )
+
+
+def test_chat_route_records_invalid_citation_metric() -> None:
+    metrics_registry.reset()
+    fake_pipeline = FakePipeline(citation_valid=False)
+    client = build_client(fake_pipeline)
+
+    response = client.post(
+        "/chat",
+        headers=AUTH_HEADERS,
+        json={"question": "What is FlashAttention?"},
+    )
+
+    assert response.status_code == 200
+    assert "rag_citation_invalid_total 1" in metrics_registry.render_prometheus()
 
 
 def test_openapi_exposes_chat_route() -> None:

@@ -51,6 +51,8 @@ class MetricsRegistry:
         )
         self._latency_counts: dict[tuple[str, str], int] = defaultdict(int)
         self._latency_sums: dict[tuple[str, str], float] = defaultdict(float)
+        self._rag_refusal_counts: dict[str, int] = defaultdict(int)
+        self._rag_citation_invalid_total = 0
 
     def reset(self) -> None:
         with self._lock:
@@ -58,6 +60,8 @@ class MetricsRegistry:
             self._latency_bucket_counts.clear()
             self._latency_counts.clear()
             self._latency_sums.clear()
+            self._rag_refusal_counts.clear()
+            self._rag_citation_invalid_total = 0
 
     def observe_http_request(
         self,
@@ -80,6 +84,18 @@ class MetricsRegistry:
                 if latency_seconds <= upper_bound:
                     bucket_counts[index] += 1
 
+    def observe_rag_response(
+        self,
+        *,
+        refusal_reason: str | None,
+        citation_valid: bool | None,
+    ) -> None:
+        with self._lock:
+            if refusal_reason is not None:
+                self._rag_refusal_counts[refusal_reason] += 1
+            if citation_valid is False:
+                self._rag_citation_invalid_total += 1
+
     def render_prometheus(self) -> str:
         with self._lock:
             request_counts = dict(self._request_counts)
@@ -89,6 +105,8 @@ class MetricsRegistry:
             }
             latency_counts = dict(self._latency_counts)
             latency_sums = dict(self._latency_sums)
+            rag_refusal_counts = dict(self._rag_refusal_counts)
+            rag_citation_invalid_total = self._rag_citation_invalid_total
 
         lines = [
             "# HELP rag_requests_total Total HTTP requests.",
@@ -148,6 +166,28 @@ class MetricsRegistry:
                 f"{{{route_labels}}} "
                 f"{format_metric_value(latency_sums[(method, path)])}"
             )
+
+        lines.extend(
+            [
+                "# HELP rag_refusals_total Total RAG refusal responses.",
+                "# TYPE rag_refusals_total counter",
+            ]
+        )
+        for reason in sorted(rag_refusal_counts):
+            labels = format_labels({"reason": reason})
+            lines.append(
+                f"rag_refusals_total{{{labels}}} "
+                f"{rag_refusal_counts[reason]}"
+            )
+
+        lines.extend(
+            [
+                "# HELP rag_citation_invalid_total Total RAG responses with "
+                "invalid citations.",
+                "# TYPE rag_citation_invalid_total counter",
+                f"rag_citation_invalid_total {rag_citation_invalid_total}",
+            ]
+        )
 
         return "\n".join(lines) + "\n"
 

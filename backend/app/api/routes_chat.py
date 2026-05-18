@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.api.security import require_api_key
 from backend.app.core.request_id import get_request_id
 from backend.app.db.session import get_db_session
+from backend.app.observability.metrics import metrics_registry
 from backend.app.rag.pipeline import RagPipeline
 from backend.app.schemas.chat import ChatRequest, ChatResponse
 
@@ -38,6 +39,10 @@ async def chat(
         request.to_pipeline_request(
             workspace_id=normalize_workspace_id(workspace_id),
         )
+    )
+    metrics_registry.observe_rag_response(
+        refusal_reason=response.refusal.reason if response.refusal else None,
+        citation_valid=response.citation_valid,
     )
     return ChatResponse.from_pipeline_response(
         response,
