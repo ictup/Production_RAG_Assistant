@@ -11,6 +11,23 @@ FIRST_CONTEXT_TEXT_PATTERN = re.compile(
     r"\[1\]\n.*?Text:\n(?P<text>.*?)(?:\n\n\[\d+\]|\n\nQuestion:)",
     re.DOTALL,
 )
+TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "does",
+    "for",
+    "how",
+    "is",
+    "it",
+    "of",
+    "the",
+    "to",
+    "what",
+}
+DEFAULT_ANSWER_SENTENCE_COUNT = 3
 
 
 class GeneratedAnswer(BaseModel):
@@ -75,18 +92,88 @@ def extract_first_context_text(prompt: str) -> str:
 
 
 def first_sentence(text: str) -> str:
+    sentences = split_sentences(text)
+    if sentences:
+        return sentences[0]
+    return ""
+
+
+def split_sentences(text: str) -> list[str]:
     normalized = " ".join(text.split())
-    sentence_match = re.match(r"(.+?[.!?])(?:\s|$)", normalized)
-    if sentence_match is not None:
-        return sentence_match.group(1)
-    return normalized
+    if not normalized:
+        return []
+
+    sentences = re.findall(r".+?(?:[.!?])(?:\s|$)", normalized)
+    consumed_length = sum(len(sentence) for sentence in sentences)
+    remainder = normalized[consumed_length:].strip()
+    if remainder:
+        sentences.append(remainder)
+
+    return [sentence.strip() for sentence in sentences if sentence.strip()]
+
+
+def extract_question_terms(question: str) -> set[str]:
+    return {
+        token
+        for token in TOKEN_PATTERN.findall(question.casefold())
+        if len(token) > 1 and token not in STOPWORDS
+    }
+
+
+def score_sentence(sentence: str, question_terms: set[str]) -> int:
+    if not question_terms:
+        return 0
+
+    sentence_terms = set(TOKEN_PATTERN.findall(sentence.casefold()))
+    return len(sentence_terms & question_terms)
+
+
+def select_relevant_sentences(
+    *,
+    question: str,
+    context_text: str,
+    max_sentences: int = DEFAULT_ANSWER_SENTENCE_COUNT,
+) -> list[str]:
+    if max_sentences <= 0:
+        raise ValueError("max_sentences must be greater than zero")
+
+    sentences = split_sentences(context_text)
+    if not sentences:
+        return []
+
+    question_terms = extract_question_terms(question)
+    scored_indexes = [
+        (score_sentence(sentence, question_terms), index)
+        for index, sentence in enumerate(sentences)
+    ]
+    _, best_index = max(scored_indexes, key=lambda item: (item[0], -item[1]))
+
+    start_index = max(0, best_index - 1)
+    end_index = min(len(sentences), start_index + max_sentences)
+    if end_index - start_index < max_sentences:
+        start_index = max(0, end_index - max_sentences)
+
+    return sentences[start_index:end_index]
+
+
+def build_relevant_context_snippet(*, question: str, context_text: str) -> str:
+    sentences = select_relevant_sentences(
+        question=question,
+        context_text=context_text,
+    )
+    if not sentences:
+        raise ValueError("context_text must not be blank")
+    return " ".join(sentences)
 
 
 def build_fake_answer(*, question: str, context_text: str) -> str:
-    sentence = first_sentence(context_text)
+    snippet = build_relevant_context_snippet(
+        question=question,
+        context_text=context_text,
+    )
     return (
         "Based on the provided documents, the relevant answer is: "
-        f"{sentence} [1]"
+        f"{snippet} [1]"
     )
 
 
@@ -97,4 +184,3 @@ def build_generator(settings: Settings | None = None) -> Generator:
         return FakeGenerator(model_name=settings.llm_model)
 
     raise ValueError(f"unsupported generator provider: {settings.generator_provider}")
-

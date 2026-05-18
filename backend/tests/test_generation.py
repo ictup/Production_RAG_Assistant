@@ -9,9 +9,14 @@ from backend.app.rag.generation import (
     Generator,
     build_fake_answer,
     build_generator,
+    build_relevant_context_snippet,
     extract_first_context_text,
     extract_question,
+    extract_question_terms,
     first_sentence,
+    score_sentence,
+    select_relevant_sentences,
+    split_sentences,
 )
 from backend.app.rag.prompts import build_rag_prompt
 from backend.app.rag.retrieval_models import RetrievedChunk
@@ -83,7 +88,73 @@ def test_first_sentence_prefers_sentence_boundary() -> None:
     assert first_sentence("First sentence. Second sentence.") == "First sentence."
 
 
-def test_build_fake_answer_always_adds_first_citation() -> None:
+def test_split_sentences_preserves_markdown_heading_context() -> None:
+    assert split_sentences(
+        "# FlashAttention\n\nFlashAttention is IO-aware. It reduces memory."
+    ) == [
+        "# FlashAttention FlashAttention is IO-aware.",
+        "It reduces memory.",
+    ]
+
+
+def test_extract_question_terms_removes_stopwords() -> None:
+    assert extract_question_terms(
+        "How does PagedAttention improve KV cache memory management?"
+    ) == {
+        "pagedattention",
+        "improve",
+        "kv",
+        "cache",
+        "memory",
+        "management",
+    }
+
+
+def test_score_sentence_counts_question_term_overlap() -> None:
+    question_terms = {"pagedattention", "kv", "cache", "memory"}
+
+    assert (
+        score_sentence(
+            "PagedAttention stores the KV cache in virtual memory pages.",
+            question_terms,
+        )
+        == 4
+    )
+
+
+def test_select_relevant_sentences_includes_neighboring_evidence() -> None:
+    sentences = select_relevant_sentences(
+        question="How does PagedAttention improve KV cache memory management?",
+        context_text=(
+            "During autoregressive decoding, each sequence grows token by token. "
+            "Without a paged layout, KV-cache memory can become fragmented. "
+            "Paging improves utilization."
+        ),
+    )
+
+    assert sentences == [
+        "During autoregressive decoding, each sequence grows token by token.",
+        "Without a paged layout, KV-cache memory can become fragmented.",
+        "Paging improves utilization.",
+    ]
+
+
+def test_build_relevant_context_snippet_keeps_keywords_for_eval() -> None:
+    snippet = build_relevant_context_snippet(
+        question="What problem does FlashAttention solve?",
+        context_text=(
+            "# FlashAttention\n\n"
+            "FlashAttention is an IO-aware exact attention algorithm. "
+            "It reduces memory traffic by tiling attention computation."
+        ),
+    )
+
+    assert "IO-aware" in snippet
+    assert "memory" in snippet
+    assert "attention" in snippet
+
+
+def test_build_fake_answer_adds_relevant_context_and_first_citation() -> None:
     answer = build_fake_answer(
         question="What is FlashAttention?",
         context_text="FlashAttention is IO-aware. Extra detail.",
@@ -91,7 +162,7 @@ def test_build_fake_answer_always_adds_first_citation() -> None:
 
     assert answer == (
         "Based on the provided documents, the relevant answer is: "
-        "FlashAttention is IO-aware. [1]"
+        "FlashAttention is IO-aware. Extra detail. [1]"
     )
 
 
@@ -105,4 +176,3 @@ def test_build_generator_uses_settings() -> None:
 
     assert isinstance(generator, Generator)
     assert generator.model_name == "test-fake-llm"
-
