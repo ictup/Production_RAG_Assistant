@@ -25,7 +25,9 @@ def get_request_id(request: Request) -> str:
     if isinstance(request_id, str) and request_id:
         return request_id
 
-    return normalize_request_id(request.headers.get(REQUEST_ID_HEADER))
+    request_id = normalize_request_id(request.headers.get(REQUEST_ID_HEADER))
+    request.state.request_id = request_id
+    return request_id
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -34,8 +36,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        request_id = normalize_request_id(request.headers.get(REQUEST_ID_HEADER))
-        request.state.request_id = request_id
+        request_id = get_request_id(request)
 
         response = await call_next(request)
         response.headers[REQUEST_ID_HEADER] = request_id
