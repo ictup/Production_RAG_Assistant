@@ -1,0 +1,37 @@
+.PHONY: db-up db-down db-logs migrate ingest ingest-dry-run inspect-ingestion vector-smoke sparse-smoke hybrid-smoke rerank-smoke pipeline-smoke
+
+db-up:
+	docker compose up -d postgres
+
+db-down:
+	docker compose down
+
+db-logs:
+	docker compose logs -f postgres
+
+migrate:
+	uv run alembic upgrade head
+
+ingest:
+	uv run python -m ingestion.ingest --input data/raw --workspace-id public
+
+ingest-dry-run:
+	uv run python -m ingestion.ingest --input data/raw --workspace-id public --dry-run
+
+inspect-ingestion:
+	uv run python -m ingestion.inspect_ingestion --min-documents 1 --min-chunks 1
+
+vector-smoke:
+	uv run python -m backend.app.rag.vector_smoke
+
+sparse-smoke:
+	uv run python -m backend.app.rag.sparse_smoke
+
+hybrid-smoke:
+	uv run python -m backend.app.rag.hybrid_smoke
+
+rerank-smoke:
+	uv run python -m backend.app.rag.rerank_smoke
+
+pipeline-smoke:
+	uv run python -m backend.app.rag.pipeline_smoke
