@@ -361,6 +361,7 @@ make inspect-chat-logs  检查 chat_logs
 make inspect-evals      检查 eval 数据集格式
 make run-evals          运行 eval summary
 make eval-gate          eval 失败时返回非零退出码
+make embedding-smoke    验证当前 embedding provider 能返回正确维度
 make pipeline-smoke     端到端 pipeline smoke
 ```
 
@@ -593,6 +594,12 @@ OPENAI_API_KEY
 - OpenAI embedding client 已经有 mock 测试，但还没经过真实 API 验证。
 - embedding provider 是 RAG 质量的第一关键依赖。
 - 完成真实 embedding smoke 后，后续接 OpenAI generator 会更稳。
+
+启用 OpenAI embedding 后可以先跑：
+
+```powershell
+uv run python -m backend.app.rag.embedding_smoke --expected-dimension 1536
+```
 
 然后再做：
 

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 
 from backend.app.api import routes_chat
+from backend.app.core.config import Settings, get_settings
 from backend.app.db.models import ChatLog
 from backend.app.db.repositories import CreateChatLogInput
 from backend.app.main import create_app
@@ -124,7 +125,9 @@ def build_client(
     fake_chat_log_repository: FakeChatLogRepository | None = None,
 ) -> TestClient:
     fake_chat_log_repository = fake_chat_log_repository or FakeChatLogRepository()
-    app = create_app()
+    settings = Settings(api_keys="dev-key")
+    app = create_app(settings)
+    app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[routes_chat.get_rag_pipeline] = lambda: fake_pipeline
     app.dependency_overrides[routes_chat.get_chat_log_repository] = (
         lambda: fake_chat_log_repository

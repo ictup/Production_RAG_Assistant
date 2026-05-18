@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from backend.app.core.config import Settings
+from backend.app.rag.embedding_smoke import run_embedding_smoke
 from backend.app.rag.embeddings import (
     EmbeddingClient,
     EmbeddingDimensionError,
@@ -117,6 +118,24 @@ async def test_openai_embedding_client_rejects_http_errors() -> None:
             await embedding_client.embed_query("FlashAttention")
 
 
+@pytest.mark.asyncio
+async def test_embedding_smoke_uses_configured_client(capsys) -> None:
+    client = FakeEmbeddingClient(dimension=4, model_name="test-fake")
+
+    exit_code = await run_embedding_smoke(
+        texts=["FlashAttention", "PagedAttention"],
+        expected_dimension=4,
+        embedding_client=client,
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "model: test-fake" in output
+    assert "dimension: 4" in output
+    assert "inputs: 2" in output
+    assert "embedding smoke passed" in output
+
+
 def test_openai_embedding_client_rejects_blank_api_key() -> None:
     with pytest.raises(ValueError, match="api_key"):
         OpenAIEmbeddingClient(api_key=" ")
@@ -166,7 +185,9 @@ def test_build_embedding_client_uses_settings() -> None:
 
 def test_build_embedding_client_requires_openai_api_key() -> None:
     with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-        build_embedding_client(Settings(embedding_provider="openai"))
+        build_embedding_client(
+            Settings(embedding_provider="openai", openai_api_key=None)
+        )
 
 
 def test_build_embedding_client_rejects_blank_openai_api_key() -> None:
