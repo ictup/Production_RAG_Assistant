@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.security import require_api_key
+from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
 from backend.app.db.repositories import (
     ChatLogRepository,
     ChatSessionRepository,
@@ -33,14 +33,6 @@ async def get_chat_log_repository(
     return ChatLogRepository(session=session)
 
 
-def normalize_workspace_id(workspace_id: str | None) -> str:
-    if workspace_id is None:
-        return "public"
-
-    normalized = workspace_id.strip()
-    return normalized or "public"
-
-
 async def get_chat_session_or_404(
     *,
     session_id: uuid.UUID,
@@ -65,14 +57,14 @@ async def get_chat_session_or_404(
 )
 async def create_chat_session(
     request: CreateChatSessionRequest,
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[
         ChatSessionRepository,
         Depends(get_chat_session_repository),
     ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> ChatSessionResponse:
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     chat_session = await repository.create_session(
         CreateChatSessionInput(
             workspace_id=normalized_workspace_id,
@@ -89,7 +81,7 @@ async def create_chat_session(
 
 @router.get("/chat/sessions", response_model=ChatSessionsResponse)
 async def list_chat_sessions(
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[
         ChatSessionRepository,
         Depends(get_chat_session_repository),
@@ -98,7 +90,7 @@ async def list_chat_sessions(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ChatSessionsResponse:
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     result = await repository.list_sessions(
         workspace_id=normalized_workspace_id,
         limit=limit,
@@ -115,14 +107,14 @@ async def list_chat_sessions(
 @router.get("/chat/sessions/{session_id}", response_model=ChatSessionResponse)
 async def get_chat_session(
     session_id: uuid.UUID,
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[
         ChatSessionRepository,
         Depends(get_chat_session_repository),
     ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> ChatSessionResponse:
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     chat_session = await repository.get_session(
         session_id=session_id,
         workspace_id=normalized_workspace_id,
@@ -144,7 +136,7 @@ async def get_chat_session(
 )
 async def list_chat_session_logs(
     session_id: uuid.UUID,
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     chat_session_repository: Annotated[
         ChatSessionRepository,
         Depends(get_chat_session_repository),
@@ -157,7 +149,7 @@ async def list_chat_session_logs(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ChatSessionLogsResponse:
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     await get_chat_session_or_404(
         session_id=session_id,
         workspace_id=normalized_workspace_id,

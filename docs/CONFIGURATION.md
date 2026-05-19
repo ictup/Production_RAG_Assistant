@@ -74,6 +74,8 @@ chunk embeddings so query vectors and stored vectors use the same model.
 - Keep only placeholders in `.env.example`.
 - Use `API_KEYS` for client authentication tokens; rotate them by updating the
   deployment secret and restarting the API.
+- Use `API_KEY_WORKSPACE_ACCESS` when one API key should be limited to specific
+  workspaces instead of all workspaces.
 - Use `OPENAI_API_KEY` only when OpenAI providers are enabled.
 - Use a real secret manager for shared or production deployments. `.env` is
   acceptable only for local development.
@@ -91,6 +93,7 @@ chunk embeddings so query vectors and stored vectors use the same model.
 | `ENV` | `local` | No | Runtime environment label such as `local` or `production`. |
 | `LOG_LEVEL` | `INFO` | No | Backend log level. |
 | `API_KEYS` | `dev-key` | Yes | Comma-separated Bearer tokens accepted by API authentication. |
+| `API_KEY_WORKSPACE_ACCESS` | empty | No | Optional semicolon-separated API key to workspace allow-list, for example `dev-key=*;tenant-key=tenant-a\|tenant-b`. Empty means all configured API keys can access all workspaces. When non-empty, keys without an entry cannot access any workspace. |
 
 ### Ports and Database
 

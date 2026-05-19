@@ -193,12 +193,13 @@ def build_client(
     fake_pipeline: FakePipeline,
     fake_chat_log_repository: FakeChatLogRepository | None = None,
     fake_chat_session_repository: FakeChatSessionRepository | None = None,
+    settings: Settings | None = None,
 ) -> TestClient:
     fake_chat_log_repository = fake_chat_log_repository or FakeChatLogRepository()
     fake_chat_session_repository = (
         fake_chat_session_repository or FakeChatSessionRepository()
     )
-    settings = Settings(api_keys="dev-key")
+    settings = settings or Settings(api_keys="dev-key")
     app = create_app(settings)
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[routes_chat.get_rag_pipeline] = lambda: fake_pipeline
@@ -497,6 +498,33 @@ def test_chat_route_rejects_invalid_api_key() -> None:
 
     assert response.status_code == 401
     assert response.json() == {"detail": "invalid api key"}
+    assert fake_pipeline.requests == []
+    assert fake_chat_log_repository.inputs == []
+
+
+def test_chat_route_rejects_forbidden_workspace_before_pipeline_call() -> None:
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(
+        fake_pipeline,
+        fake_chat_log_repository,
+        settings=Settings(
+            api_keys="tenant-key",
+            api_key_workspace_access="tenant-key=tenant-a",
+        ),
+    )
+
+    response = client.post(
+        "/chat",
+        headers={
+            "Authorization": "Bearer tenant-key",
+            "X-Workspace-ID": "tenant-b",
+        },
+        json={"question": "What is FlashAttention?"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "workspace access denied"}
     assert fake_pipeline.requests == []
     assert fake_chat_log_repository.inputs == []
 

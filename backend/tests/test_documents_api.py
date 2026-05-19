@@ -169,8 +169,9 @@ def build_client(
     fake_repository: FakeDocumentRepository,
     embedding_client: RecordingEmbeddingClient | None = None,
     reindex_runner: FakeReindexRunner | None = None,
+    settings: Settings | None = None,
 ) -> TestClient:
-    settings = Settings(api_keys="dev-key")
+    settings = settings or Settings(api_keys="dev-key")
     embedding_client = embedding_client or RecordingEmbeddingClient()
     reindex_runner = reindex_runner or FakeReindexRunner()
     app = create_app(settings)
@@ -242,6 +243,29 @@ def test_documents_route_requires_api_key() -> None:
 
     assert response.status_code == 401
     assert response.json() == {"detail": "missing api key"}
+    assert fake_repository.list_calls == []
+
+
+def test_documents_route_rejects_forbidden_workspace_before_repository_call() -> None:
+    fake_repository = FakeDocumentRepository()
+    client = build_client(
+        fake_repository,
+        settings=Settings(
+            api_keys="tenant-key",
+            api_key_workspace_access="tenant-key=tenant-a",
+        ),
+    )
+
+    response = client.get(
+        "/documents",
+        headers={
+            "Authorization": "Bearer tenant-key",
+            "X-Workspace-ID": "tenant-b",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "workspace access denied"}
     assert fake_repository.list_calls == []
 
 

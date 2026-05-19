@@ -112,9 +112,10 @@ def make_chat_log_model() -> ChatLog:
 def build_client(
     fake_repository: FakeChatSessionRepository,
     fake_chat_log_repository: FakeChatLogRepository | None = None,
+    settings: Settings | None = None,
 ) -> TestClient:
     fake_chat_log_repository = fake_chat_log_repository or FakeChatLogRepository()
-    settings = Settings(api_keys="dev-key")
+    settings = settings or Settings(api_keys="dev-key")
     app = create_app(settings)
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[routes_chat_sessions.get_chat_session_repository] = (
@@ -163,6 +164,29 @@ def test_create_chat_session_route_requires_api_key() -> None:
     assert response.status_code == 401
     assert response.json() == {"detail": "missing api key"}
     assert fake_repository.create_calls == []
+
+
+def test_list_chat_sessions_route_rejects_forbidden_workspace() -> None:
+    fake_repository = FakeChatSessionRepository()
+    client = build_client(
+        fake_repository,
+        settings=Settings(
+            api_keys="tenant-key",
+            api_key_workspace_access="tenant-key=tenant-a",
+        ),
+    )
+
+    response = client.get(
+        "/chat/sessions",
+        headers={
+            "Authorization": "Bearer tenant-key",
+            "X-Workspace-ID": "tenant-b",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "workspace access denied"}
+    assert fake_repository.list_calls == []
 
 
 def test_list_chat_sessions_route_returns_paginated_sessions() -> None:

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.security import require_api_key
+from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
 from backend.app.core.logging import serialize_log_payload
 from backend.app.core.request_id import get_request_id
 from backend.app.db.repositories import (
@@ -58,14 +58,6 @@ async def get_chat_session_repository(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ChatSessionRepository:
     return ChatSessionRepository(session=session)
-
-
-def normalize_workspace_id(workspace_id: str | None) -> str:
-    if workspace_id is None:
-        return "public"
-
-    normalized = workspace_id.strip()
-    return normalized or "public"
 
 
 def build_chat_log_input(
@@ -195,19 +187,18 @@ async def run_chat_request(
     pipeline: RagPipeline,
     chat_log_repository: ChatLogRepository,
     chat_session_repository: ChatSessionRepository,
-    workspace_id: str | None,
+    workspace_id: str,
 ) -> tuple[str, uuid.UUID | None, ChatPipelineResponse]:
     request_id = get_request_id(http_request)
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
     session_id = await resolve_chat_session_id(
         session_id=request.session_id,
-        workspace_id=normalized_workspace_id,
+        workspace_id=workspace_id,
         repository=chat_session_repository,
     )
     try:
         response = await pipeline.answer_question(
             request.to_pipeline_request(
-                workspace_id=normalized_workspace_id,
+                workspace_id=workspace_id,
             )
         )
     except OpenAIProviderError as exc:
@@ -219,7 +210,7 @@ async def run_chat_request(
         log_provider_error(
             error=exc,
             request_id=request_id,
-            workspace_id=normalized_workspace_id,
+            workspace_id=workspace_id,
         )
         raise HTTPException(
             status_code=map_provider_error_status(exc),
@@ -234,7 +225,7 @@ async def run_chat_request(
     await chat_log_repository.create_chat_log(
         build_chat_log_input(
             request_id=request_id,
-            workspace_id=normalized_workspace_id,
+            workspace_id=workspace_id,
             session_id=session_id,
             request=request,
             response=response,
@@ -343,7 +334,7 @@ async def iter_chat_stream_events(
 async def chat(
     http_request: Request,
     request: ChatRequest,
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     pipeline: Annotated[RagPipeline, Depends(get_rag_pipeline)],
     chat_log_repository: Annotated[
         ChatLogRepository,
@@ -355,13 +346,14 @@ async def chat(
     ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> ChatResponse:
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     request_id, session_id, response = await run_chat_request(
         http_request=http_request,
         request=request,
         pipeline=pipeline,
         chat_log_repository=chat_log_repository,
         chat_session_repository=chat_session_repository,
-        workspace_id=workspace_id,
+        workspace_id=normalized_workspace_id,
     )
     return ChatResponse.from_pipeline_response(
         response,
@@ -374,7 +366,7 @@ async def chat(
 async def chat_stream(
     http_request: Request,
     request: ChatRequest,
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     pipeline: Annotated[RagPipeline, Depends(get_rag_pipeline)],
     chat_log_repository: Annotated[
         ChatLogRepository,
@@ -387,7 +379,7 @@ async def chat_stream(
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> StreamingResponse:
     request_id = get_request_id(http_request)
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     session_id = await resolve_chat_session_id(
         session_id=request.session_id,
         workspace_id=normalized_workspace_id,
@@ -416,7 +408,7 @@ async def chat_stream(
 
 @router.get("/chat/logs", response_model=ChatLogsResponse)
 async def list_chat_logs(
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     chat_log_repository: Annotated[
         ChatLogRepository,
         Depends(get_chat_log_repository),
@@ -424,7 +416,7 @@ async def list_chat_logs(
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
 ) -> ChatLogsResponse:
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     logs = await chat_log_repository.list_recent_chat_logs(
         workspace_id=normalized_workspace_id,
         limit=limit,

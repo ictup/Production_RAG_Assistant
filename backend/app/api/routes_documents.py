@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.security import require_api_key
+from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
 from backend.app.db.repositories import DocumentRepository
 from backend.app.db.session import get_db_session
 from backend.app.rag.embedding_pipeline import embed_chunks
@@ -46,23 +46,15 @@ async def get_reindex_runner() -> ReindexRunner:
     return reindex_embeddings
 
 
-def normalize_workspace_id(workspace_id: str | None) -> str:
-    if workspace_id is None:
-        return "public"
-
-    normalized = workspace_id.strip()
-    return normalized or "public"
-
-
 @router.get("/documents", response_model=DocumentsResponse)
 async def list_documents(
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> DocumentsResponse:
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     result = await repository.list_documents(
         workspace_id=normalized_workspace_id,
         limit=limit,
@@ -80,12 +72,12 @@ async def list_documents(
 async def create_document(
     request: CreateDocumentRequest,
     response: Response,
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
     embedding_client: Annotated[EmbeddingClient, Depends(get_embedding_client)],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> CreateDocumentResponse:
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     try:
         raw_document = load_markdown_text(
             request.markdown,
@@ -156,11 +148,11 @@ async def create_document(
 @router.post("/documents/reindex", response_model=ReindexDocumentsResponse)
 async def reindex_documents(
     request: ReindexDocumentsRequest,
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     runner: Annotated[ReindexRunner, Depends(get_reindex_runner)],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> ReindexDocumentsResponse:
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     try:
         stats = await runner(
             workspace_id=normalized_workspace_id,
@@ -181,11 +173,11 @@ async def reindex_documents(
 @router.get("/documents/{document_id}", response_model=DocumentDetailResponse)
 async def get_document_detail(
     document_id: uuid.UUID,
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> DocumentDetailResponse:
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     result = await repository.get_document_detail(
         document_id=document_id,
         workspace_id=normalized_workspace_id,
@@ -204,11 +196,11 @@ async def get_document_detail(
 @router.delete("/documents/{document_id}", response_model=DeleteDocumentResponse)
 async def delete_document(
     document_id: uuid.UUID,
-    _api_key: Annotated[str, Depends(require_api_key)],
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> DeleteDocumentResponse:
-    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     deleted = await repository.delete_document(
         document_id=document_id,
         workspace_id=normalized_workspace_id,

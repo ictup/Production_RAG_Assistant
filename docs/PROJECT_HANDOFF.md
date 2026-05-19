@@ -79,6 +79,7 @@ docs/EVAL_TRENDS.md
 - Prometheus 指标接口：`GET /metrics`
 - API key 鉴权：`Authorization: Bearer dev-key`
 - workspace 隔离头：`X-Workspace-ID`
+- API key workspace 访问控制：`API_KEY_WORKSPACE_ACCESS`
 - request id 中间件：支持客户端传入 `X-Request-ID`
 - trace context 中间件：支持客户端传入 `X-Trace-ID`，并返回 `X-Trace-ID`
 - 结构化请求日志中间件
@@ -273,7 +274,16 @@ EMBEDDING_PROVIDER=fake
 GENERATOR_PROVIDER=fake
 RERANKER_PROVIDER=none
 API_KEYS=dev-key
+API_KEY_WORKSPACE_ACCESS=
 ```
+
+`API_KEY_WORKSPACE_ACCESS` 为空时，所有已配置 API key 都可以访问所有 workspace。配置后格式为：
+
+```text
+API_KEY_WORKSPACE_ACCESS=dev-key=*;tenant-key=tenant-a|tenant-b
+```
+
+如果该变量非空，没有出现在映射里的 API key 不能访问任何 workspace；访问未授权 workspace 会返回 `403 workspace access denied`。
 
 如果要启用 OpenAI embeddings，需要改成：
 
@@ -435,7 +445,7 @@ docker compose -f docker-compose.prod.yml down
 http://127.0.0.1:8000/app/
 ```
 
-默认本地 API key 使用 `dev-key`，workspace 使用 `public`。页面支持：
+默认本地 API key 使用 `dev-key`，workspace 使用 `public`。如果配置了 `API_KEY_WORKSPACE_ACCESS`，页面填写的 API key 也必须被允许访问当前 workspace。页面支持：
 
 - 创建 chat session
 - 刷新 session 列表
@@ -712,7 +722,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-342 passed
+359 passed
 ```
 
 ### Pipeline Smoke
@@ -1010,7 +1020,8 @@ Repository -> Settings -> Actions -> General
 - 部署 runbook 已完成：`docs/DEPLOYMENT_RUNBOOK.md`。
 - CORS 策略已完成：默认关闭，通过 `CORS_ALLOWED_ORIGINS` 或 `CORS_ALLOWED_ORIGIN_REGEX` 显式开启。
 - rate limit 已完成：默认关闭，通过 `RATE_LIMIT_ENABLED` 显式开启。
-- 更完整的认证和权限模型。
+- API key 到 workspace 的访问控制已完成：`API_KEY_WORKSPACE_ACCESS`、`ApiPrincipal`、越权返回 403。
+- 更完整的用户/角色/组织模型。
 - secrets 管理仍需接入真实部署平台或 secret manager。
 
 ### 可观测性
@@ -1095,13 +1106,14 @@ OPENAI_API_KEY
 6. 部署 runbook。已完成。
 7. dashboard 和 alert。已完成。
 8. eval 趋势记录。已完成。
+9. API key workspace 访问控制。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-更完整的认证和权限模型
+workspace 管理 API
 ```
 
 原因：
@@ -1114,7 +1126,7 @@ OPENAI_API_KEY
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose、CORS、基础 rate limit、配置/secrets 文档、部署 runbook、dashboard 和 alert 模板、trace/span 日志、慢查询监控方案和 eval 趋势记录都已完成，下一步补更完整的认证和权限模型。
+- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose、CORS、基础 rate limit、配置/secrets 文档、部署 runbook、dashboard 和 alert 模板、trace/span 日志、慢查询监控方案、eval 趋势记录和 API key workspace 访问控制都已完成，下一步补 workspace 管理 API。
 
 启用 OpenAI embedding 后可以先跑：
 
