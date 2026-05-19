@@ -18,7 +18,7 @@ from ingestion.models import RawDocument
 class FakeAsyncSession:
     def __init__(
         self,
-        scalar_result: uuid.UUID | None = None,
+        scalar_result: Any | None = None,
         scalars_result: list[Any] | None = None,
         execute_result: list[Any] | None = None,
     ) -> None:
@@ -33,7 +33,7 @@ class FakeAsyncSession:
         self.flushed = False
         self.committed = False
 
-    async def scalar(self, statement: Any) -> uuid.UUID | None:
+    async def scalar(self, statement: Any) -> Any | None:
         self.scalar_statement = statement
         return self.scalar_result
 
@@ -97,6 +97,27 @@ def make_document_model() -> Document:
         metadata_={"topic": "attention"},
         created_at=datetime(2026, 5, 18, 8, 0, tzinfo=UTC),
         updated_at=datetime(2026, 5, 18, 9, 0, tzinfo=UTC),
+    )
+
+
+def make_chunk_model(
+    *,
+    chunk_index: int = 0,
+    text: str = "FlashAttention reduces HBM traffic.",
+) -> DocumentChunk:
+    return DocumentChunk(
+        id=uuid.UUID(f"22222222-2222-2222-2222-{chunk_index + 1:012d}"),
+        document_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+        workspace_id="tenant-a",
+        chunk_index=chunk_index,
+        text=text,
+        token_count=5,
+        section_title="FlashAttention",
+        page_number=None,
+        source_uri="data/raw/flashattention.md",
+        embedding=make_embedding(),
+        metadata_={"chunk": chunk_index},
+        created_at=datetime(2026, 5, 18, 8, chunk_index, tzinfo=UTC),
     )
 
 
@@ -173,6 +194,54 @@ async def test_list_documents_rejects_invalid_pagination() -> None:
 
     with pytest.raises(ValueError, match="offset"):
         await repository.list_documents(offset=-1)
+
+
+@pytest.mark.asyncio
+async def test_get_document_detail_returns_document_and_ordered_chunks() -> None:
+    document = make_document_model()
+    chunks = [
+        make_chunk_model(chunk_index=0),
+        make_chunk_model(chunk_index=1, text="It uses tiling for exact attention."),
+    ]
+    session = FakeAsyncSession(
+        scalar_result=document,
+        scalars_result=chunks,
+    )
+    repository = DocumentRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.get_document_detail(
+        document_id=document.id,
+        workspace_id=" tenant-a ",
+    )
+
+    assert result is not None
+    assert result.document.id == document.id
+    assert result.document.workspace_id == "tenant-a"
+    assert result.document.chunk_count == 2
+    assert [chunk.chunk_index for chunk in result.chunks] == [0, 1]
+    assert result.chunks[0].text == "FlashAttention reduces HBM traffic."
+    assert result.chunks[0].metadata == {"chunk": 0}
+    assert session.scalar_statement is not None
+    assert session.scalars_statement is not None
+    assert "documents.workspace_id" in str(session.scalar_statement)
+    compiled = str(session.scalars_statement)
+    assert "document_chunks.workspace_id" in compiled
+    assert "ORDER BY document_chunks.chunk_index ASC" in compiled
+
+
+@pytest.mark.asyncio
+async def test_get_document_detail_returns_none_for_missing_document() -> None:
+    session = FakeAsyncSession(scalar_result=None)
+    repository = DocumentRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.get_document_detail(
+        document_id=uuid.uuid4(),
+        workspace_id="tenant-a",
+    )
+
+    assert result is None
+    assert session.scalar_statement is not None
+    assert session.scalars_statement is None
 
 
 @pytest.mark.asyncio

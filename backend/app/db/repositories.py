@@ -52,9 +52,30 @@ class DocumentSummary:
 
 
 @dataclass(frozen=True)
+class DocumentChunkSummary:
+    id: uuid.UUID
+    document_id: uuid.UUID
+    workspace_id: str
+    chunk_index: int
+    text: str
+    token_count: int
+    section_title: str | None
+    page_number: int | None
+    source_uri: str
+    metadata: dict[str, Any]
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class DocumentListResult:
     total: int
     documents: list[DocumentSummary]
+
+
+@dataclass(frozen=True)
+class DocumentDetailResult:
+    document: DocumentSummary
+    chunks: list[DocumentChunkSummary]
 
 
 class DocumentRepository:
@@ -108,21 +129,45 @@ class DocumentRepository:
         return DocumentListResult(
             total=int(total or 0),
             documents=[
-                DocumentSummary(
-                    id=document.id,
-                    workspace_id=document.workspace_id,
-                    source_type=document.source_type,
-                    source_uri=document.source_uri,
-                    title=document.title,
-                    author=document.author,
-                    visibility=document.visibility,
-                    metadata=dict(document.metadata_),
+                self._build_document_summary(
+                    document=document,
                     chunk_count=int(chunk_count or 0),
-                    created_at=document.created_at,
-                    updated_at=document.updated_at,
                 )
                 for document, chunk_count in rows
             ],
+        )
+
+    async def get_document_detail(
+        self,
+        *,
+        document_id: uuid.UUID,
+        workspace_id: str = "public",
+    ) -> DocumentDetailResult | None:
+        workspace_id = workspace_id.strip() or "public"
+        document_statement = select(Document).where(
+            Document.id == document_id,
+            Document.workspace_id == workspace_id,
+        )
+        document = await self.session.scalar(document_statement)
+        if document is None:
+            return None
+
+        chunk_statement = (
+            select(DocumentChunk)
+            .where(
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.workspace_id == workspace_id,
+            )
+            .order_by(DocumentChunk.chunk_index.asc())
+        )
+        chunks = list((await self.session.scalars(chunk_statement)).all())
+
+        return DocumentDetailResult(
+            document=self._build_document_summary(
+                document=document,
+                chunk_count=len(chunks),
+            ),
+            chunks=[self._build_chunk_summary(chunk) for chunk in chunks],
         )
 
     async def ingest_document(
@@ -189,6 +234,42 @@ class DocumentRepository:
             content_hash=resolved_hash,
             inserted=True,
             chunks_inserted=len(chunk_models),
+        )
+
+    @staticmethod
+    def _build_document_summary(
+        *,
+        document: Document,
+        chunk_count: int,
+    ) -> DocumentSummary:
+        return DocumentSummary(
+            id=document.id,
+            workspace_id=document.workspace_id,
+            source_type=document.source_type,
+            source_uri=document.source_uri,
+            title=document.title,
+            author=document.author,
+            visibility=document.visibility,
+            metadata=dict(document.metadata_),
+            chunk_count=chunk_count,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+        )
+
+    @staticmethod
+    def _build_chunk_summary(chunk: DocumentChunk) -> DocumentChunkSummary:
+        return DocumentChunkSummary(
+            id=chunk.id,
+            document_id=chunk.document_id,
+            workspace_id=chunk.workspace_id,
+            chunk_index=chunk.chunk_index,
+            text=chunk.text,
+            token_count=chunk.token_count,
+            section_title=chunk.section_title,
+            page_number=chunk.page_number,
+            source_uri=chunk.source_uri,
+            metadata=dict(chunk.metadata_),
+            created_at=chunk.created_at,
         )
 
     @staticmethod

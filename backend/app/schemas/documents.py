@@ -3,7 +3,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from backend.app.db.repositories import DocumentListResult, DocumentSummary
+from backend.app.db.repositories import (
+    DocumentChunkSummary,
+    DocumentDetailResult,
+    DocumentListResult,
+    DocumentSummary,
+)
 
 
 class DocumentItem(BaseModel):
@@ -63,4 +68,53 @@ class DocumentsResponse(BaseModel):
             limit=limit,
             offset=offset,
             documents=documents,
+        )
+
+
+class DocumentChunkItem(BaseModel):
+    id: str
+    document_id: str
+    workspace_id: str
+    chunk_index: int = Field(ge=0)
+    text: str
+    token_count: int = Field(ge=0)
+    section_title: str | None
+    page_number: int | None
+    source_uri: str
+    metadata: dict[str, Any]
+    created_at: datetime
+
+    @classmethod
+    def from_summary(cls, chunk: DocumentChunkSummary) -> "DocumentChunkItem":
+        return cls(
+            id=str(chunk.id),
+            document_id=str(chunk.document_id),
+            workspace_id=chunk.workspace_id,
+            chunk_index=chunk.chunk_index,
+            text=chunk.text,
+            token_count=chunk.token_count,
+            section_title=chunk.section_title,
+            page_number=chunk.page_number,
+            source_uri=chunk.source_uri,
+            metadata=dict(chunk.metadata),
+            created_at=chunk.created_at,
+        )
+
+
+class DocumentDetailResponse(BaseModel):
+    workspace_id: str
+    document: DocumentItem
+    chunks: list[DocumentChunkItem]
+
+    @classmethod
+    def from_result(
+        cls,
+        *,
+        workspace_id: str,
+        result: DocumentDetailResult,
+    ) -> "DocumentDetailResponse":
+        return cls(
+            workspace_id=workspace_id,
+            document=DocumentItem.from_summary(result.document),
+            chunks=[DocumentChunkItem.from_summary(chunk) for chunk in result.chunks],
         )

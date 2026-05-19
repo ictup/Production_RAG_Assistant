@@ -5,16 +5,27 @@ from fastapi.testclient import TestClient
 
 from backend.app.api import routes_documents
 from backend.app.core.config import Settings, get_settings
-from backend.app.db.repositories import DocumentListResult, DocumentSummary
+from backend.app.db.repositories import (
+    DocumentChunkSummary,
+    DocumentDetailResult,
+    DocumentListResult,
+    DocumentSummary,
+)
 from backend.app.main import create_app
 
 AUTH_HEADERS = {"Authorization": "Bearer dev-key"}
 
 
 class FakeDocumentRepository:
-    def __init__(self, result: DocumentListResult | None = None) -> None:
+    def __init__(
+        self,
+        result: DocumentListResult | None = None,
+        detail_result: DocumentDetailResult | None = None,
+    ) -> None:
         self.result = result or DocumentListResult(total=0, documents=[])
+        self.detail_result = detail_result
         self.list_calls: list[tuple[str, int, int]] = []
+        self.detail_calls: list[tuple[uuid.UUID, str]] = []
 
     async def list_documents(
         self,
@@ -25,6 +36,15 @@ class FakeDocumentRepository:
     ) -> DocumentListResult:
         self.list_calls.append((workspace_id, limit, offset))
         return self.result
+
+    async def get_document_detail(
+        self,
+        *,
+        document_id: uuid.UUID,
+        workspace_id: str = "public",
+    ) -> DocumentDetailResult | None:
+        self.detail_calls.append((document_id, workspace_id))
+        return self.detail_result
 
 
 def make_document_summary() -> DocumentSummary:
@@ -40,6 +60,29 @@ def make_document_summary() -> DocumentSummary:
         chunk_count=3,
         created_at=datetime(2026, 5, 18, 8, 0, tzinfo=UTC),
         updated_at=datetime(2026, 5, 18, 9, 0, tzinfo=UTC),
+    )
+
+
+def make_chunk_summary() -> DocumentChunkSummary:
+    return DocumentChunkSummary(
+        id=uuid.UUID("22222222-2222-2222-2222-222222222222"),
+        document_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+        workspace_id="tenant-a",
+        chunk_index=0,
+        text="FlashAttention reduces memory traffic.",
+        token_count=5,
+        section_title="FlashAttention",
+        page_number=None,
+        source_uri="data/raw/llm_systems/flashattention.md",
+        metadata={"topic": "attention"},
+        created_at=datetime(2026, 5, 18, 8, 5, tzinfo=UTC),
+    )
+
+
+def make_document_detail_result() -> DocumentDetailResult:
+    return DocumentDetailResult(
+        document=make_document_summary(),
+        chunks=[make_chunk_summary()],
     )
 
 
@@ -131,6 +174,74 @@ def test_documents_route_rejects_invalid_pagination() -> None:
     assert fake_repository.list_calls == []
 
 
+def test_document_detail_route_returns_document_and_chunks() -> None:
+    document_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+    fake_repository = FakeDocumentRepository(
+        detail_result=make_document_detail_result()
+    )
+    client = build_client(fake_repository)
+
+    response = client.get(
+        f"/documents/{document_id}",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "  tenant-a  ",
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_repository.detail_calls == [(document_id, "tenant-a")]
+    body = response.json()
+    assert body["workspace_id"] == "tenant-a"
+    assert body["document"]["id"] == str(document_id)
+    assert body["document"]["chunk_count"] == 3
+    assert body["chunks"][0]["id"] == "22222222-2222-2222-2222-222222222222"
+    assert body["chunks"][0]["chunk_index"] == 0
+    assert body["chunks"][0]["text"] == "FlashAttention reduces memory traffic."
+    assert body["chunks"][0]["metadata"] == {"topic": "attention"}
+
+
+def test_document_detail_route_returns_404_for_missing_document() -> None:
+    document_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+    fake_repository = FakeDocumentRepository(detail_result=None)
+    client = build_client(fake_repository)
+
+    response = client.get(
+        f"/documents/{document_id}",
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "document not found"}
+    assert fake_repository.detail_calls == [(document_id, "public")]
+
+
+def test_document_detail_route_rejects_invalid_uuid() -> None:
+    fake_repository = FakeDocumentRepository()
+    client = build_client(fake_repository)
+
+    response = client.get(
+        "/documents/not-a-uuid",
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 422
+    assert fake_repository.detail_calls == []
+
+
+def test_document_detail_route_requires_api_key() -> None:
+    fake_repository = FakeDocumentRepository(
+        detail_result=make_document_detail_result()
+    )
+    client = build_client(fake_repository)
+
+    response = client.get("/documents/11111111-1111-1111-1111-111111111111")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "missing api key"}
+    assert fake_repository.detail_calls == []
+
+
 def test_openapi_exposes_documents_route() -> None:
     fake_repository = FakeDocumentRepository()
     client = build_client(fake_repository)
@@ -139,3 +250,4 @@ def test_openapi_exposes_documents_route() -> None:
 
     assert response.status_code == 200
     assert "/documents" in response.json()["paths"]
+    assert "/documents/{document_id}" in response.json()["paths"]
