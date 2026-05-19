@@ -51,6 +51,10 @@ class UsageInfo(BaseModel):
     model: str
     embedding_model: str
     latency_ms: int
+    generator_provider: str = "unknown"
+    embedding_provider: str = "unknown"
+    embedding_latency_ms: int = 0
+    generation_latency_ms: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
 
@@ -102,11 +106,18 @@ class RagPipeline:
                 fused_count=0,
                 top_score=None,
                 model=self.generator.model_name,
+                generator_provider=self.generator.provider_name,
                 embedding_model=self.embedding_client.model_name,
+                embedding_provider=self.embedding_client.provider_name,
                 started_at=started_at,
             )
 
+        embedding_started_at = time.perf_counter()
         query_embedding = await self.embedding_client.embed_query(request.question)
+        embedding_latency_ms = max(
+            0,
+            int((time.perf_counter() - embedding_started_at) * 1000),
+        )
         vector_results = await VectorRetriever(self.session).retrieve(
             query_embedding=query_embedding,
             top_k=vector_top_k,
@@ -136,8 +147,11 @@ class RagPipeline:
                 fused_count=len(fused_results),
                 top_score=refusal.top_score,
                 model=self.generator.model_name,
+                generator_provider=self.generator.provider_name,
                 embedding_model=self.embedding_client.model_name,
+                embedding_provider=self.embedding_client.provider_name,
                 started_at=started_at,
+                embedding_latency_ms=embedding_latency_ms,
             )
 
         used_chunks = (
@@ -150,7 +164,12 @@ class RagPipeline:
             else fused_results[:rerank_top_n]
         )
         prompt = build_rag_prompt(request.question, used_chunks)
+        generation_started_at = time.perf_counter()
         generated = await self.generator.generate(prompt)
+        generation_latency_ms = max(
+            0,
+            int((time.perf_counter() - generation_started_at) * 1000),
+        )
         sources = build_sources(used_chunks)
         citation_valid = validate_citations(generated.answer, len(sources))
 
@@ -167,10 +186,14 @@ class RagPipeline:
             ),
             usage=build_usage_info(
                 model=generated.model,
+                generator_provider=self.generator.provider_name,
                 embedding_model=self.embedding_client.model_name,
+                embedding_provider=self.embedding_client.provider_name,
                 started_at=started_at,
                 input_tokens=generated.input_tokens,
                 output_tokens=generated.output_tokens,
+                embedding_latency_ms=embedding_latency_ms,
+                generation_latency_ms=generation_latency_ms,
             ),
             citation_valid=citation_valid,
             refusal=None,
@@ -206,7 +229,10 @@ def build_refusal_response(
     top_score: float | None,
     model: str,
     embedding_model: str,
+    generator_provider: str = "unknown",
+    embedding_provider: str = "unknown",
     started_at: float,
+    embedding_latency_ms: int = 0,
 ) -> ChatPipelineResponse:
     return ChatPipelineResponse(
         answer=REFUSAL_ANSWER,
@@ -221,8 +247,11 @@ def build_refusal_response(
         ),
         usage=build_usage_info(
             model=model,
+            generator_provider=generator_provider,
             embedding_model=embedding_model,
+            embedding_provider=embedding_provider,
             started_at=started_at,
+            embedding_latency_ms=embedding_latency_ms,
         ),
         citation_valid=None,
         refusal=refusal,
@@ -234,13 +263,21 @@ def build_usage_info(
     model: str,
     embedding_model: str,
     started_at: float,
+    generator_provider: str = "unknown",
+    embedding_provider: str = "unknown",
     input_tokens: int = 0,
     output_tokens: int = 0,
+    embedding_latency_ms: int = 0,
+    generation_latency_ms: int = 0,
 ) -> UsageInfo:
     return UsageInfo(
         model=model,
         embedding_model=embedding_model,
+        generator_provider=generator_provider,
+        embedding_provider=embedding_provider,
         latency_ms=max(0, int((time.perf_counter() - started_at) * 1000)),
+        embedding_latency_ms=embedding_latency_ms,
+        generation_latency_ms=generation_latency_ms,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
     )

@@ -33,7 +33,7 @@ https://github.com/ictup/Production_RAG_Assistant.git
 - workspace 隔离头：`X-Workspace-ID`
 - request id 中间件：支持客户端传入 `X-Request-ID`
 - 结构化请求日志中间件
-- HTTP 请求指标、RAG refusal 指标、无效 citation 指标
+- HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
 
 ### 数据库与迁移
@@ -322,6 +322,15 @@ Provider 失败会暴露为：
 rag_provider_errors_total{provider="openai",operation="OpenAI response request",category="rate_limit"} 1
 ```
 
+Provider 成功调用会暴露 token 和延迟指标：
+
+```text
+rag_provider_latency_seconds_count{provider="openai",operation="embedding",model="text-embedding-3-small"} 1
+rag_provider_latency_seconds_count{provider="openai",operation="generation",model="gpt-5.4-nano"} 1
+rag_provider_tokens_total{provider="openai",model="gpt-5.4-nano",token_type="input"} 1200
+rag_provider_tokens_total{provider="openai",model="gpt-5.4-nano",token_type="output"} 240
+```
+
 ## 7. 常用验证命令
 
 ### Lint
@@ -339,7 +348,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-221 passed
+223 passed
 ```
 
 ### Pipeline Smoke
@@ -570,7 +579,8 @@ Repository -> Settings -> Actions -> General
 - OpenAI provider 超时、有限重试和错误分类。
 - OpenAI provider API 错误响应、结构化日志和 metrics。
 - provider API key 配置校验目前覆盖 OpenAI embedding 和 OpenAI generator。
-- provider cost 统计和更细粒度 latency metrics。
+- provider token 统计和 embedding/generation latency 细分指标。
+- provider 真实美元成本估算还未实现；建议后续用配置化价格表，不要把频繁变化的官方价格写死在代码里。
 
 ### 检索质量
 
@@ -612,7 +622,6 @@ Repository -> Settings -> Actions -> General
 - trace/span 集成。
 - dashboard 模板。
 - 慢查询监控。
-- provider latency 细分指标。
 - eval 趋势记录。
 
 ## 13. 推荐后续路线
@@ -639,7 +648,7 @@ Repository -> Settings -> Actions -> General
 4. 用 OpenAI generator 跑 eval gate。
 5. 增加 provider 超时、重试和错误分类。
 6. 增加 provider API 错误响应和 metrics。
-7. 增加 provider cost 统计和 latency 细分。
+7. 根据业务需要增加配置化 provider price table，把 token usage 转成成本估算。
 
 需要你提供：
 
@@ -690,7 +699,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-增加 provider cost 统计和 latency 细分
+文档管理 API 第一步：查询文档列表
 ```
 
 原因：
@@ -702,7 +711,8 @@ OPENAI_API_KEY
 - OpenAI generator 已可纳入 eval runner。
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
-- 下一步应补充 provider cost 统计和 latency 细分，方便估算真实运行成本。
+- provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
+- 当前 ingest、inspect、reindex 仍主要是 CLI 能力，下一步应把文档管理能力逐步开放为 API，先从只读查询列表开始，风险最低。
 
 启用 OpenAI embedding 后可以先跑：
 

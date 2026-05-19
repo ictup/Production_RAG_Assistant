@@ -115,6 +115,37 @@ def log_provider_error(
     )
 
 
+def observe_chat_provider_usage(response: ChatPipelineResponse) -> None:
+    usage = response.usage
+    if response.retrieval.mode != "question_guard":
+        metrics_registry.observe_provider_latency(
+            provider=usage.embedding_provider,
+            operation="embedding",
+            model=usage.embedding_model,
+            latency_seconds=usage.embedding_latency_ms / 1000,
+        )
+
+    if response.refusal is None:
+        metrics_registry.observe_provider_latency(
+            provider=usage.generator_provider,
+            operation="generation",
+            model=usage.model,
+            latency_seconds=usage.generation_latency_ms / 1000,
+        )
+        metrics_registry.observe_provider_tokens(
+            provider=usage.generator_provider,
+            model=usage.model,
+            token_type="input",
+            tokens=usage.input_tokens,
+        )
+        metrics_registry.observe_provider_tokens(
+            provider=usage.generator_provider,
+            model=usage.model,
+            token_type="output",
+            tokens=usage.output_tokens,
+        )
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     http_request: Request,
@@ -155,6 +186,7 @@ async def chat(
         refusal_reason=response.refusal.reason if response.refusal else None,
         citation_valid=response.citation_valid,
     )
+    observe_chat_provider_usage(response)
     await chat_log_repository.create_chat_log(
         build_chat_log_input(
             request_id=request_id,

@@ -64,6 +64,10 @@ class FakePipeline:
                 model="test-fake-llm",
                 embedding_model="test-fake-embedding",
                 latency_ms=12,
+                generator_provider="fake",
+                embedding_provider="fake",
+                embedding_latency_ms=7,
+                generation_latency_ms=5,
                 input_tokens=10,
                 output_tokens=5,
             ),
@@ -334,6 +338,37 @@ def test_chat_route_records_invalid_citation_metric() -> None:
 
     assert response.status_code == 200
     assert "rag_citation_invalid_total 1" in metrics_registry.render_prometheus()
+
+
+def test_chat_route_records_provider_usage_metrics() -> None:
+    metrics_registry.reset()
+    fake_pipeline = FakePipeline()
+    client = build_client(fake_pipeline)
+
+    response = client.post(
+        "/chat",
+        headers=AUTH_HEADERS,
+        json={"question": "What is FlashAttention?"},
+    )
+
+    assert response.status_code == 200
+    output = metrics_registry.render_prometheus()
+    assert (
+        'rag_provider_latency_seconds_count{provider="fake",'
+        'operation="embedding",model="test-fake-embedding"} 1'
+    ) in output
+    assert (
+        'rag_provider_latency_seconds_count{provider="fake",'
+        'operation="generation",model="test-fake-llm"} 1'
+    ) in output
+    assert (
+        'rag_provider_tokens_total{provider="fake",model="test-fake-llm",'
+        'token_type="input"} 10'
+    ) in output
+    assert (
+        'rag_provider_tokens_total{provider="fake",model="test-fake-llm",'
+        'token_type="output"} 5'
+    ) in output
 
 
 @pytest.mark.parametrize(

@@ -21,6 +21,7 @@ class OpenAIEmbeddingError(OpenAIProviderError):
 
 @runtime_checkable
 class EmbeddingClient(Protocol):
+    provider_name: str
     model_name: str
     dimension: int
 
@@ -65,6 +66,8 @@ def validate_embedding_batch(
 
 
 class FakeEmbeddingClient:
+    provider_name = "fake"
+
     def __init__(
         self,
         *,
@@ -108,6 +111,8 @@ class FakeEmbeddingClient:
 
 
 class OpenAIEmbeddingClient:
+    provider_name = "openai"
+
     def __init__(
         self,
         *,

@@ -93,6 +93,63 @@ def test_metrics_registry_records_provider_errors() -> None:
     )
 
 
+def test_metrics_registry_records_provider_latency_and_tokens() -> None:
+    registry = MetricsRegistry(latency_buckets=(0.01, 0.1))
+
+    registry.observe_provider_latency(
+        provider="openai",
+        operation="generation",
+        model="gpt-5.4-nano",
+        latency_seconds=0.05,
+    )
+    registry.observe_provider_tokens(
+        provider="openai",
+        model="gpt-5.4-nano",
+        token_type="input",
+        tokens=12,
+    )
+    registry.observe_provider_tokens(
+        provider="openai",
+        model="gpt-5.4-nano",
+        token_type="output",
+        tokens=4,
+    )
+
+    output = registry.render_prometheus()
+    assert_metric_line(
+        output,
+        'rag_provider_latency_seconds_bucket'
+        '{provider="openai",operation="generation",'
+        'model="gpt-5.4-nano",le="0.01"} 0',
+    )
+    assert_metric_line(
+        output,
+        'rag_provider_latency_seconds_bucket'
+        '{provider="openai",operation="generation",'
+        'model="gpt-5.4-nano",le="0.1"} 1',
+    )
+    assert_metric_line(
+        output,
+        'rag_provider_latency_seconds_count'
+        '{provider="openai",operation="generation",model="gpt-5.4-nano"} 1',
+    )
+    assert_metric_line(
+        output,
+        'rag_provider_latency_seconds_sum'
+        '{provider="openai",operation="generation",model="gpt-5.4-nano"} 0.05',
+    )
+    assert_metric_line(
+        output,
+        'rag_provider_tokens_total'
+        '{provider="openai",model="gpt-5.4-nano",token_type="input"} 12',
+    )
+    assert_metric_line(
+        output,
+        'rag_provider_tokens_total'
+        '{provider="openai",model="gpt-5.4-nano",token_type="output"} 4',
+    )
+
+
 def test_metrics_route_returns_prometheus_text() -> None:
     metrics_registry.reset()
     metrics_registry.observe_http_request(

@@ -101,6 +101,10 @@ async def test_pipeline_answers_with_sources_and_valid_citations() -> None:
     assert response.retrieval.used_count == 1
     assert response.usage.model == "test-fake-llm"
     assert response.usage.embedding_model == "test-fake-embedding"
+    assert response.usage.generator_provider == "fake"
+    assert response.usage.embedding_provider == "fake"
+    assert response.usage.embedding_latency_ms >= 0
+    assert response.usage.generation_latency_ms >= 0
     assert response.sources[0].chunk_id == str(chunk_id)
     assert len(session.statements) == 2
 
@@ -129,6 +133,10 @@ async def test_pipeline_refuses_when_retrieval_returns_no_chunks() -> None:
     assert response.refusal is not None
     assert response.refusal.reason == "no_retrieved_chunks"
     assert response.retrieval.used_count == 0
+    assert response.usage.generator_provider == "fake"
+    assert response.usage.embedding_provider == "fake"
+    assert response.usage.embedding_latency_ms >= 0
+    assert response.usage.generation_latency_ms == 0
     assert response.usage.input_tokens == 0
     assert response.usage.output_tokens == 0
 
@@ -161,6 +169,10 @@ async def test_pipeline_refuses_prompt_injection_before_retrieval() -> None:
     assert response.retrieval.mode == "question_guard"
     assert response.retrieval.fused_count == 0
     assert response.retrieval.used_count == 0
+    assert response.usage.generator_provider == "fake"
+    assert response.usage.embedding_provider == "fake"
+    assert response.usage.embedding_latency_ms == 0
+    assert response.usage.generation_latency_ms == 0
     assert len(session.statements) == 0
 
 
