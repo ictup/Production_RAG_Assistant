@@ -32,6 +32,17 @@ def test_workspace_has_updated_at_index() -> None:
     assert "workspaces_updated_at_idx" in index_names
 
 
+def test_workspace_scoped_tables_reference_workspace_registry() -> None:
+    for table in (Document, DocumentChunk, ChatSession, ChatLog):
+        foreign_keys = list(table.__table__.c.workspace_id.foreign_keys)
+
+        assert len(foreign_keys) == 1
+        assert foreign_keys[0].column.table.name == "workspaces"
+        assert foreign_keys[0].column.name == "id"
+        assert foreign_keys[0].ondelete == "RESTRICT"
+        assert foreign_keys[0].onupdate == "CASCADE"
+
+
 def test_document_metadata_column_uses_safe_python_attribute_name() -> None:
     assert Document.metadata_.name == "metadata"
     assert Document.__table__.c["metadata"] is Document.metadata_.property.columns[0]

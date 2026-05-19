@@ -54,6 +54,15 @@ def make_settings() -> Settings:
     )
 
 
+def make_cost_settings() -> Settings:
+    return Settings(
+        **{
+            **make_settings().model_dump(),
+            "provider_price_table": "fake:test-fake-llm:input=0.50,output=1.00",
+        }
+    )
+
+
 def make_row(*, chunk_id: uuid.UUID, document_id: uuid.UUID) -> FakeRow:
     return FakeRow(
         chunk_id=chunk_id,
@@ -110,6 +119,40 @@ async def test_pipeline_answers_with_sources_and_valid_citations() -> None:
     assert response.usage.generation_latency_ms >= 0
     assert response.sources[0].chunk_id == str(chunk_id)
     assert len(session.statements) == 2
+
+
+@pytest.mark.asyncio
+async def test_pipeline_estimates_generation_cost_from_configured_prices() -> None:
+    chunk_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    session = FakeAsyncSession(
+        [
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+        ]
+    )
+    pipeline = RagPipeline(
+        session=session,  # type: ignore[arg-type]
+        settings=make_cost_settings(),
+        embedding_client=FakeEmbeddingClient(
+            dimension=1536,
+            model_name="test-fake-embedding",
+        ),
+        reranker=NoOpReranker(),
+        generator=FakeGenerator(model_name="test-fake-llm"),
+    )
+
+    response = await pipeline.answer_question(
+        ChatPipelineRequest(question="What problem does FlashAttention solve?")
+    )
+
+    assert response.usage.cost_estimated is True
+    assert response.usage.input_cost_usd > 0
+    assert response.usage.output_cost_usd > 0
+    assert response.usage.total_cost_usd == (
+        response.usage.input_cost_usd + response.usage.output_cost_usd
+    )
+    assert response.usage.cost_currency == "USD"
 
 
 @pytest.mark.asyncio

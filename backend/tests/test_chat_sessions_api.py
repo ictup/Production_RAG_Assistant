@@ -80,6 +80,18 @@ class FakeChatLogRepository:
         return self.list_result
 
 
+class FakeWorkspaceRepository:
+    def __init__(self, workspace_ids: set[str] | None = None) -> None:
+        self.workspace_ids = workspace_ids or {"public", "tenant-a"}
+        self.get_calls: list[str] = []
+
+    async def get_workspace(self, *, workspace_id: str):
+        self.get_calls.append(workspace_id)
+        if workspace_id in self.workspace_ids:
+            return object()
+        return None
+
+
 def make_chat_session_model() -> ChatSession:
     return ChatSession(
         id=uuid.UUID("33333333-3333-3333-3333-333333333333"),
@@ -112,9 +124,11 @@ def make_chat_log_model() -> ChatLog:
 def build_client(
     fake_repository: FakeChatSessionRepository,
     fake_chat_log_repository: FakeChatLogRepository | None = None,
+    fake_workspace_repository: FakeWorkspaceRepository | None = None,
     settings: Settings | None = None,
 ) -> TestClient:
     fake_chat_log_repository = fake_chat_log_repository or FakeChatLogRepository()
+    fake_workspace_repository = fake_workspace_repository or FakeWorkspaceRepository()
     settings = settings or Settings(api_keys="dev-key")
     app = create_app(settings)
     app.dependency_overrides[get_settings] = lambda: settings
@@ -123,6 +137,9 @@ def build_client(
     )
     app.dependency_overrides[routes_chat_sessions.get_chat_log_repository] = (
         lambda: fake_chat_log_repository
+    )
+    app.dependency_overrides[routes_chat_sessions.get_workspace_repository] = (
+        lambda: fake_workspace_repository
     )
     return TestClient(app)
 
@@ -163,6 +180,29 @@ def test_create_chat_session_route_requires_api_key() -> None:
 
     assert response.status_code == 401
     assert response.json() == {"detail": "missing api key"}
+    assert fake_repository.create_calls == []
+
+
+def test_create_chat_session_route_rejects_missing_workspace_before_create() -> None:
+    fake_repository = FakeChatSessionRepository()
+    fake_workspace_repository = FakeWorkspaceRepository(workspace_ids={"public"})
+    client = build_client(
+        fake_repository,
+        fake_workspace_repository=fake_workspace_repository,
+    )
+
+    response = client.post(
+        "/chat/sessions",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "tenant-missing",
+        },
+        json={"title": "GPU systems questions"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "workspace not found"}
+    assert fake_workspace_repository.get_calls == ["tenant-missing"]
     assert fake_repository.create_calls == []
 
 

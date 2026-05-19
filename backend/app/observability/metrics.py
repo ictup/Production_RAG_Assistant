@@ -64,6 +64,9 @@ class MetricsRegistry:
             float
         )
         self._provider_token_counts: dict[tuple[str, str, str], int] = defaultdict(int)
+        self._provider_cost_totals_usd: dict[tuple[str, str], float] = defaultdict(
+            float
+        )
         self._provider_error_counts: dict[tuple[str, str, str], int] = defaultdict(int)
 
     def reset(self) -> None:
@@ -78,6 +81,7 @@ class MetricsRegistry:
             self._provider_latency_counts.clear()
             self._provider_latency_sums.clear()
             self._provider_token_counts.clear()
+            self._provider_cost_totals_usd.clear()
             self._provider_error_counts.clear()
 
     def observe_http_request(
@@ -157,6 +161,19 @@ class MetricsRegistry:
         with self._lock:
             self._provider_token_counts[(provider, model, token_type)] += tokens
 
+    def observe_provider_cost(
+        self,
+        *,
+        provider: str,
+        model: str,
+        cost_usd: float,
+    ) -> None:
+        if cost_usd <= 0:
+            return
+
+        with self._lock:
+            self._provider_cost_totals_usd[(provider, model)] += cost_usd
+
     def render_prometheus(self) -> str:
         with self._lock:
             request_counts = dict(self._request_counts)
@@ -175,6 +192,7 @@ class MetricsRegistry:
             provider_latency_counts = dict(self._provider_latency_counts)
             provider_latency_sums = dict(self._provider_latency_sums)
             provider_token_counts = dict(self._provider_token_counts)
+            provider_cost_totals_usd = dict(self._provider_cost_totals_usd)
             provider_error_counts = dict(self._provider_error_counts)
 
         lines = [
@@ -321,6 +339,24 @@ class MetricsRegistry:
             lines.append(
                 f"rag_provider_tokens_total{{{labels}}} "
                 f"{provider_token_counts[(provider, model, token_type)]}"
+            )
+
+        lines.extend(
+            [
+                "# HELP rag_provider_cost_usd_total Estimated upstream provider cost.",
+                "# TYPE rag_provider_cost_usd_total counter",
+            ]
+        )
+        for provider, model in sorted(provider_cost_totals_usd):
+            labels = format_labels(
+                {
+                    "provider": provider,
+                    "model": model,
+                }
+            )
+            lines.append(
+                f"rag_provider_cost_usd_total{{{labels}}} "
+                f"{format_metric_value(provider_cost_totals_usd[(provider, model)])}"
             )
 
         lines.extend(

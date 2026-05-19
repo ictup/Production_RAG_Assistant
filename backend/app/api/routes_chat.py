@@ -9,12 +9,17 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
+from backend.app.api.workspace_validation import (
+    get_workspace_repository,
+    require_existing_workspace,
+)
 from backend.app.core.logging import serialize_log_payload
 from backend.app.core.request_id import get_request_id
 from backend.app.db.repositories import (
     ChatLogRepository,
     ChatSessionRepository,
     CreateChatLogInput,
+    WorkspaceRepository,
 )
 from backend.app.db.session import get_db_session
 from backend.app.observability.metrics import metrics_registry
@@ -177,6 +182,11 @@ def observe_chat_provider_usage(response: ChatPipelineResponse) -> None:
             model=usage.model,
             token_type="output",
             tokens=usage.output_tokens,
+        )
+        metrics_registry.observe_provider_cost(
+            provider=usage.generator_provider,
+            model=usage.model,
+            cost_usd=usage.total_cost_usd,
         )
 
 
@@ -344,9 +354,17 @@ async def chat(
         ChatSessionRepository,
         Depends(get_chat_session_repository),
     ],
+    workspace_repository: Annotated[
+        WorkspaceRepository,
+        Depends(get_workspace_repository),
+    ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> ChatResponse:
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
+    await require_existing_workspace(
+        workspace_id=normalized_workspace_id,
+        repository=workspace_repository,
+    )
     request_id, session_id, response = await run_chat_request(
         http_request=http_request,
         request=request,
@@ -376,10 +394,18 @@ async def chat_stream(
         ChatSessionRepository,
         Depends(get_chat_session_repository),
     ],
+    workspace_repository: Annotated[
+        WorkspaceRepository,
+        Depends(get_workspace_repository),
+    ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> StreamingResponse:
     request_id = get_request_id(http_request)
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
+    await require_existing_workspace(
+        workspace_id=normalized_workspace_id,
+        repository=workspace_repository,
+    )
     session_id = await resolve_chat_session_id(
         session_id=request.session_id,
         workspace_id=normalized_workspace_id,

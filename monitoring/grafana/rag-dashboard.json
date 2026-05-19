@@ -192,6 +192,33 @@
       ],
       "title": "Invalid citations in last 15m",
       "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "sum by (provider, model) (increase(rag_provider_cost_usd_total[1h]))",
+          "legendFormat": "{{provider}} {{model}}"
+        }
+      ],
+      "title": "Estimated provider cost in last 1h",
+      "type": "stat"
     }
   ],
   "refresh": "30s",

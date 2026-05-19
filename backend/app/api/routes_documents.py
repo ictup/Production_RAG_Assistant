@@ -7,7 +7,11 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
-from backend.app.db.repositories import DocumentRepository
+from backend.app.api.workspace_validation import (
+    get_workspace_repository,
+    require_existing_workspace,
+)
+from backend.app.db.repositories import DocumentRepository, WorkspaceRepository
 from backend.app.db.session import get_db_session
 from backend.app.rag.embedding_pipeline import embed_chunks
 from backend.app.rag.embeddings import EmbeddingClient, build_embedding_client
@@ -74,10 +78,18 @@ async def create_document(
     response: Response,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
+    workspace_repository: Annotated[
+        WorkspaceRepository,
+        Depends(get_workspace_repository),
+    ],
     embedding_client: Annotated[EmbeddingClient, Depends(get_embedding_client)],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> CreateDocumentResponse:
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
+    await require_existing_workspace(
+        workspace_id=normalized_workspace_id,
+        repository=workspace_repository,
+    )
     try:
         raw_document = load_markdown_text(
             request.markdown,
@@ -150,9 +162,17 @@ async def reindex_documents(
     request: ReindexDocumentsRequest,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     runner: Annotated[ReindexRunner, Depends(get_reindex_runner)],
+    workspace_repository: Annotated[
+        WorkspaceRepository,
+        Depends(get_workspace_repository),
+    ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> ReindexDocumentsResponse:
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
+    await require_existing_workspace(
+        workspace_id=normalized_workspace_id,
+        repository=workspace_repository,
+    )
     try:
         stats = await runner(
             workspace_id=normalized_workspace_id,
@@ -198,9 +218,17 @@ async def delete_document(
     document_id: uuid.UUID,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
+    workspace_repository: Annotated[
+        WorkspaceRepository,
+        Depends(get_workspace_repository),
+    ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> DeleteDocumentResponse:
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
+    await require_existing_workspace(
+        workspace_id=normalized_workspace_id,
+        repository=workspace_repository,
+    )
     deleted = await repository.delete_document(
         document_id=document_id,
         workspace_id=normalized_workspace_id,

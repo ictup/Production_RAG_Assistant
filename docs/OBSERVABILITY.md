@@ -23,6 +23,7 @@ alerting system.
 | `rag_citation_invalid_total` | Counter | Responses that failed citation validation. |
 | `rag_provider_latency_seconds` | Histogram | Upstream embedding and generation provider latency. |
 | `rag_provider_tokens_total` | Counter | Upstream provider token usage by provider, model, and token type. |
+| `rag_provider_cost_usd_total` | Counter | Estimated upstream generation token cost by provider and model. |
 | `rag_provider_errors_total` | Counter | Upstream provider errors by provider, operation, and category. |
 
 ## Trace and Span Logs

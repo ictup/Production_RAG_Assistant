@@ -32,11 +32,13 @@ class FakePipeline:
         citation_valid: bool | None = True,
         refusal: RefusalInfo | None = None,
         error: Exception | None = None,
+        usage: UsageInfo | None = None,
     ) -> None:
         self.requests: list[ChatPipelineRequest] = []
         self.citation_valid = citation_valid
         self.refusal = refusal
         self.error = error
+        self.usage = usage
 
     async def answer_question(
         self,
@@ -62,7 +64,8 @@ class FakePipeline:
                 used_count=1,
                 top_score=0.42,
             ),
-            usage=UsageInfo(
+            usage=self.usage
+            or UsageInfo(
                 model="test-fake-llm",
                 embedding_model="test-fake-embedding",
                 latency_ms=12,
@@ -133,6 +136,18 @@ class FakeChatSessionRepository:
         return self.sessions.get((session_id, workspace_id))
 
 
+class FakeWorkspaceRepository:
+    def __init__(self, workspace_ids: set[str] | None = None) -> None:
+        self.workspace_ids = workspace_ids or {"public", "tenant-a"}
+        self.get_calls: list[str] = []
+
+    async def get_workspace(self, *, workspace_id: str):
+        self.get_calls.append(workspace_id)
+        if workspace_id in self.workspace_ids:
+            return object()
+        return None
+
+
 def make_source() -> Source:
     return Source(
         source_id="1",
@@ -193,12 +208,14 @@ def build_client(
     fake_pipeline: FakePipeline,
     fake_chat_log_repository: FakeChatLogRepository | None = None,
     fake_chat_session_repository: FakeChatSessionRepository | None = None,
+    fake_workspace_repository: FakeWorkspaceRepository | None = None,
     settings: Settings | None = None,
 ) -> TestClient:
     fake_chat_log_repository = fake_chat_log_repository or FakeChatLogRepository()
     fake_chat_session_repository = (
         fake_chat_session_repository or FakeChatSessionRepository()
     )
+    fake_workspace_repository = fake_workspace_repository or FakeWorkspaceRepository()
     settings = settings or Settings(api_keys="dev-key")
     app = create_app(settings)
     app.dependency_overrides[get_settings] = lambda: settings
@@ -208,6 +225,9 @@ def build_client(
     )
     app.dependency_overrides[routes_chat.get_chat_session_repository] = (
         lambda: fake_chat_session_repository
+    )
+    app.dependency_overrides[routes_chat.get_workspace_repository] = (
+        lambda: fake_workspace_repository
     )
     return TestClient(app)
 
@@ -342,6 +362,32 @@ def test_chat_route_rejects_missing_session_before_pipeline_call() -> None:
     assert response.status_code == 404
     assert response.json() == {"detail": "chat session not found"}
     assert fake_chat_session_repository.get_calls == [(session_id, "tenant-a")]
+    assert fake_pipeline.requests == []
+    assert fake_chat_log_repository.inputs == []
+
+
+def test_chat_route_rejects_missing_workspace_before_pipeline_call() -> None:
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository()
+    fake_workspace_repository = FakeWorkspaceRepository(workspace_ids={"public"})
+    client = build_client(
+        fake_pipeline,
+        fake_chat_log_repository,
+        fake_workspace_repository=fake_workspace_repository,
+    )
+
+    response = client.post(
+        "/chat",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "tenant-missing",
+        },
+        json={"question": "What is FlashAttention?"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "workspace not found"}
+    assert fake_workspace_repository.get_calls == ["tenant-missing"]
     assert fake_pipeline.requests == []
     assert fake_chat_log_repository.inputs == []
 
@@ -598,6 +644,40 @@ def test_chat_route_records_provider_usage_metrics() -> None:
         'rag_provider_tokens_total{provider="fake",model="test-fake-llm",'
         'token_type="output"} 5'
     ) in output
+
+
+def test_chat_route_records_provider_cost_metric() -> None:
+    metrics_registry.reset()
+    fake_pipeline = FakePipeline(
+        usage=UsageInfo(
+            model="test-fake-llm",
+            embedding_model="test-fake-embedding",
+            latency_ms=12,
+            generator_provider="fake",
+            embedding_provider="fake",
+            embedding_latency_ms=7,
+            generation_latency_ms=5,
+            input_tokens=10,
+            output_tokens=5,
+            input_cost_usd=0.000005,
+            output_cost_usd=0.000005,
+            total_cost_usd=0.00001,
+            cost_estimated=True,
+        )
+    )
+    client = build_client(fake_pipeline)
+
+    response = client.post(
+        "/chat",
+        headers=AUTH_HEADERS,
+        json={"question": "What is FlashAttention?"},
+    )
+
+    assert response.status_code == 200
+    assert (
+        'rag_provider_cost_usd_total{provider="fake",model="test-fake-llm"} 1e-05'
+        in metrics_registry.render_prometheus()
+    )
 
 
 @pytest.mark.parametrize(

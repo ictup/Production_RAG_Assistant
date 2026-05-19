@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.tracing import trace_span
 from backend.app.rag.citations import Source, build_sources, validate_citations
+from backend.app.rag.costs import estimate_provider_token_cost
 from backend.app.rag.embeddings import EmbeddingClient, build_embedding_client
 from backend.app.rag.fusion import reciprocal_rank_fusion
 from backend.app.rag.generation import Generator, build_generator
@@ -60,6 +61,11 @@ class UsageInfo(BaseModel):
     generation_latency_ms: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    input_cost_usd: float = Field(default=0.0, ge=0)
+    output_cost_usd: float = Field(default=0.0, ge=0)
+    total_cost_usd: float = Field(default=0.0, ge=0)
+    cost_estimated: bool = False
+    cost_currency: str = "USD"
 
 
 class ChatPipelineResponse(BaseModel):
@@ -124,6 +130,7 @@ class RagPipeline:
                 embedding_model=self.embedding_client.model_name,
                 embedding_provider=self.embedding_client.provider_name,
                 started_at=started_at,
+                provider_price_table=self.settings.provider_price_table,
             )
 
         with trace_span(
@@ -202,6 +209,7 @@ class RagPipeline:
                 embedding_provider=self.embedding_client.provider_name,
                 started_at=started_at,
                 embedding_latency_ms=embedding_latency_ms,
+                provider_price_table=self.settings.provider_price_table,
             )
 
         with trace_span(
@@ -265,6 +273,7 @@ class RagPipeline:
                 output_tokens=generated.output_tokens,
                 embedding_latency_ms=embedding_latency_ms,
                 generation_latency_ms=generation_latency_ms,
+                provider_price_table=self.settings.provider_price_table,
             ),
             citation_valid=citation_valid,
             refusal=None,
@@ -298,6 +307,7 @@ class RagPipeline:
                 embedding_model=self.embedding_client.model_name,
                 embedding_provider=self.embedding_client.provider_name,
                 started_at=started_at,
+                provider_price_table=self.settings.provider_price_table,
             )
             yield ChatPipelineStreamEvent(event_type="delta", delta=response.answer)
             yield ChatPipelineStreamEvent(event_type="completed", response=response)
@@ -379,6 +389,7 @@ class RagPipeline:
                 embedding_provider=self.embedding_client.provider_name,
                 started_at=started_at,
                 embedding_latency_ms=embedding_latency_ms,
+                provider_price_table=self.settings.provider_price_table,
             )
             yield ChatPipelineStreamEvent(event_type="delta", delta=response.answer)
             yield ChatPipelineStreamEvent(event_type="completed", response=response)
@@ -466,6 +477,7 @@ class RagPipeline:
                 output_tokens=output_tokens,
                 embedding_latency_ms=embedding_latency_ms,
                 generation_latency_ms=generation_latency_ms,
+                provider_price_table=self.settings.provider_price_table,
             ),
             citation_valid=citation_valid,
             refusal=None,
@@ -506,6 +518,7 @@ def build_refusal_response(
     embedding_provider: str = "unknown",
     started_at: float,
     embedding_latency_ms: int = 0,
+    provider_price_table: str = "",
 ) -> ChatPipelineResponse:
     return ChatPipelineResponse(
         answer=REFUSAL_ANSWER,
@@ -525,6 +538,7 @@ def build_refusal_response(
             embedding_provider=embedding_provider,
             started_at=started_at,
             embedding_latency_ms=embedding_latency_ms,
+            provider_price_table=provider_price_table,
         ),
         citation_valid=None,
         refusal=refusal,
@@ -542,7 +556,15 @@ def build_usage_info(
     output_tokens: int = 0,
     embedding_latency_ms: int = 0,
     generation_latency_ms: int = 0,
+    provider_price_table: str = "",
 ) -> UsageInfo:
+    cost_estimate = estimate_provider_token_cost(
+        provider=generator_provider,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        raw_price_table=provider_price_table,
+    )
     return UsageInfo(
         model=model,
         embedding_model=embedding_model,
@@ -553,4 +575,8 @@ def build_usage_info(
         generation_latency_ms=generation_latency_ms,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        input_cost_usd=cost_estimate.input_cost_usd,
+        output_cost_usd=cost_estimate.output_cost_usd,
+        total_cost_usd=cost_estimate.total_cost_usd,
+        cost_estimated=cost_estimate.estimated,
     )

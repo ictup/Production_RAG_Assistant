@@ -114,6 +114,11 @@ def test_metrics_registry_records_provider_latency_and_tokens() -> None:
         token_type="output",
         tokens=4,
     )
+    registry.observe_provider_cost(
+        provider="openai",
+        model="gpt-5.4-nano",
+        cost_usd=0.00001,
+    )
 
     output = registry.render_prometheus()
     assert_metric_line(
@@ -147,6 +152,11 @@ def test_metrics_registry_records_provider_latency_and_tokens() -> None:
         output,
         'rag_provider_tokens_total'
         '{provider="openai",model="gpt-5.4-nano",token_type="output"} 4',
+    )
+    assert_metric_line(
+        output,
+        'rag_provider_cost_usd_total'
+        '{provider="openai",model="gpt-5.4-nano"} 1e-05',
     )
 
 

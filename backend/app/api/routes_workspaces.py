@@ -1,11 +1,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
+from backend.app.api.workspace_validation import get_workspace_repository
 from backend.app.db.repositories import CreateWorkspaceInput, WorkspaceRepository
-from backend.app.db.session import get_db_session
 from backend.app.schemas.workspaces import (
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
@@ -14,12 +13,6 @@ from backend.app.schemas.workspaces import (
 )
 
 router = APIRouter(tags=["workspaces"])
-
-
-async def get_workspace_repository(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
-) -> WorkspaceRepository:
-    return WorkspaceRepository(session=session)
 
 
 @router.post(

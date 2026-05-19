@@ -17,6 +17,7 @@ CORE_METRICS = {
     "rag_citation_invalid_total",
     "rag_provider_latency_seconds_bucket",
     "rag_provider_tokens_total",
+    "rag_provider_cost_usd_total",
     "rag_provider_errors_total",
 }
 
@@ -63,7 +64,11 @@ def test_prometheus_alert_rules_reference_existing_metrics() -> None:
         for rule in group["rules"]
     )
 
-    for metric in CORE_METRICS - {"rag_provider_tokens_total"}:
+    metrics_without_alerts = {
+        "rag_provider_tokens_total",
+        "rag_provider_cost_usd_total",
+    }
+    for metric in CORE_METRICS - metrics_without_alerts:
         assert metric in expressions
 
 

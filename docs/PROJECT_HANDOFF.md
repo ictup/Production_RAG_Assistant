@@ -88,7 +88,7 @@ docs/EVAL_TRENDS.md
 - 结构化请求日志中间件
 - 结构化 trace/span 日志：`backend.trace`
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
-- HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency 指标
+- HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency/cost 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
 - Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传和 reindex
 
@@ -301,6 +301,14 @@ OPENAI_RETRY_DELAY_SECONDS=0.25
 OPENAI_MAX_OUTPUT_TOKENS=512
 EMBEDDING_DIMENSION=1536
 ```
+
+如果要启用 provider 成本估算，设置每 100 万 token 的输入/输出价格：
+
+```text
+PROVIDER_PRICE_TABLE=openai:gpt-example:input=0.00,output=0.00
+```
+
+当前基础版只估算 generation token 成本，并输出到响应 `usage`、chat log `usage` 和 Prometheus `rag_provider_cost_usd_total`。真实价格会变化，应放在部署配置或 secret manager 中维护，不写死在代码里。
 
 `text-embedding-3-small` 默认 1536 维，和当前 pgvector schema 匹配。
 
@@ -752,7 +760,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-379 passed
+396 passed
 ```
 
 ### Pipeline Smoke
@@ -1007,7 +1015,8 @@ Repository -> Settings -> Actions -> General
 - provider API key 配置校验目前覆盖 OpenAI embedding 和 OpenAI generator。
 - provider token 统计和 embedding/generation latency 细分指标。
 - OpenAI Responses API streaming 已接入 generator 和 `/chat/stream`。
-- provider 真实美元成本估算还未实现；建议后续用配置化价格表，不要把频繁变化的官方价格写死在代码里。
+- provider generation token 成本估算基础版已完成：`PROVIDER_PRICE_TABLE`、响应 usage cost 字段、Prometheus `rag_provider_cost_usd_total`。
+- embedding token 成本估算尚未实现，因为当前 embedding provider 还没有返回 embedding token usage。
 
 ### 检索质量
 
@@ -1028,7 +1037,7 @@ Repository -> Settings -> Actions -> General
 - chat session 表和 `chat_logs.session_id` 迁移已完成。
 - chat session repository 和基础 API 已完成：`POST /chat/sessions`、`GET /chat/sessions`、`GET /chat/sessions/{session_id}`。
 - workspace registry 表、repository 和基础 API 已完成：`POST /workspaces`、`GET /workspaces`、`GET /workspaces/{workspace_id}`。
-- documents/chat sessions 目前仍通过字符串 `workspace_id` 隔离，尚未加 workspace 外键和存在性校验。
+- documents/chat sessions/chat logs 已通过 workspace 外键收紧；写入路径会先校验 workspace 是否存在。
 - `/chat` 已支持可选 `session_id`，并会把 chat log 挂到对应会话。
 - conversation history API 已完成：`GET /chat/sessions/{session_id}/logs`。
 - streaming chat API 已完成：`POST /chat/stream`。
@@ -1139,13 +1148,15 @@ OPENAI_API_KEY
 8. eval 趋势记录。已完成。
 9. API key workspace 访问控制。已完成。
 10. workspace 管理 API。已完成。
+11. workspace 存在性校验和外键收紧。已完成。
+12. provider 成本估算基础版。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-workspace registry 与文档/会话写入路径的存在性校验
+真实 reranker
 ```
 
 原因：
@@ -1158,7 +1169,7 @@ workspace registry 与文档/会话写入路径的存在性校验
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose、CORS、基础 rate limit、配置/secrets 文档、部署 runbook、dashboard 和 alert 模板、trace/span 日志、慢查询监控方案、eval 趋势记录、API key workspace 访问控制和 workspace 管理 API 都已完成，下一步把文档/会话写入路径接到 workspace registry 的存在性校验上。
+- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose、CORS、基础 rate limit、配置/secrets 文档、部署 runbook、dashboard 和 alert 模板、trace/span 日志、慢查询监控方案、eval 趋势记录、API key workspace 访问控制、workspace 管理 API、workspace 外键收紧和 provider 成本估算基础版都已完成，下一步补真实 reranker。
 
 启用 OpenAI embedding 后可以先跑：
 

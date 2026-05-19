@@ -69,6 +69,7 @@ class Document(Base):
     )
     workspace_id: Mapped[str] = mapped_column(
         Text,
+        ForeignKey("workspaces.id", ondelete="RESTRICT", onupdate="CASCADE"),
         nullable=False,
         default="public",
         server_default=sql_text("'public'"),
@@ -132,6 +133,7 @@ class DocumentChunk(Base):
     )
     workspace_id: Mapped[str] = mapped_column(
         Text,
+        ForeignKey("workspaces.id", ondelete="RESTRICT", onupdate="CASCADE"),
         nullable=False,
         default="public",
         server_default=sql_text("'public'"),
@@ -198,6 +200,7 @@ class ChatSession(Base):
     )
     workspace_id: Mapped[str] = mapped_column(
         Text,
+        ForeignKey("workspaces.id", ondelete="RESTRICT", onupdate="CASCADE"),
         nullable=False,
         default="public",
         server_default=sql_text("'public'"),
@@ -246,6 +249,7 @@ class ChatLog(Base):
     request_id: Mapped[str] = mapped_column(Text, nullable=False)
     workspace_id: Mapped[str] = mapped_column(
         Text,
+        ForeignKey("workspaces.id", ondelete="RESTRICT", onupdate="CASCADE"),
         nullable=False,
         default="public",
         server_default=sql_text("'public'"),
