@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Production RAG Assistant</title>
+    <link rel="stylesheet" href="/app/app.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="sidebar" aria-label="Chat sessions">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">RAG</div>
+          <div>
+            <h1>Production RAG</h1>
+            <p>Workspace assistant</p>
+          </div>
+        </div>
+
+        <form class="settings" id="settings-form">
+          <label>
+            API key
+            <input
+              id="api-key"
+              name="api-key"
+              type="password"
+              autocomplete="off"
+              placeholder="dev-key"
+            />
+          </label>
+          <label>
+            Workspace
+            <input
+              id="workspace-id"
+              name="workspace-id"
+              type="text"
+              autocomplete="off"
+              value="public"
+            />
+          </label>
+        </form>
+
+        <div class="session-actions">
+          <button id="new-session" type="button">+ New</button>
+          <button id="reload-sessions" type="button">Reload</button>
+        </div>
+
+        <div id="session-list" class="session-list" aria-live="polite"></div>
+      </aside>
+
+      <section class="chat-panel" aria-label="Chat">
+        <header class="chat-header">
+          <div>
+            <p class="eyebrow">Current session</p>
+            <h2 id="session-title">No session selected</h2>
+          </div>
+          <div id="status" class="status">Ready</div>
+        </header>
+
+        <div id="messages" class="messages" aria-live="polite"></div>
+
+        <form id="chat-form" class="composer">
+          <textarea
+            id="question"
+            name="question"
+            rows="3"
+            placeholder="Ask about the indexed LLM systems documents..."
+            required
+          ></textarea>
+          <button id="send" type="submit">Send</button>
+        </form>
+      </section>
+    </main>
+
+    <script src="/app/app.js" defer></script>
+  </body>
+</html>

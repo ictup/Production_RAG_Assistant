@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.app.api import (
     routes_chat,
@@ -11,6 +15,8 @@ from backend.app.core.config import Settings, get_settings
 from backend.app.core.logging import RequestLoggingMiddleware, configure_logging
 from backend.app.core.request_id import RequestIDMiddleware
 from backend.app.observability.metrics import RequestMetricsMiddleware
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -31,6 +37,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_chat_sessions.router)
     app.include_router(routes_documents.router)
     app.include_router(routes_metrics.router)
+    app.mount("/app", StaticFiles(directory=STATIC_DIR, html=True), name="app")
+
+    @app.get("/", include_in_schema=False)
+    async def redirect_to_app() -> RedirectResponse:
+        return RedirectResponse(url="/app/")
+
     return app
 
 

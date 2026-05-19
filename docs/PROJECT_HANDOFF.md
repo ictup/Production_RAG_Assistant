@@ -45,6 +45,7 @@ https://github.com/ictup/Production_RAG_Assistant.git
 - 结构化请求日志中间件
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
+- Web UI：`GET /app/`，支持 session、history 和 SSE streaming chat
 
 ### 数据库与迁移
 
@@ -134,6 +135,7 @@ backend/
     db/               models、repositories、session、migrations
     observability/    Prometheus metrics middleware 和 registry
     rag/              retrieval、fusion、rerank、prompt、generation、pipeline
+    static/           由 FastAPI 托管的最小聊天 UI
   tests/              后端单元测试和集成风格测试
 
 ingestion/
@@ -266,7 +268,29 @@ uv run uvicorn backend.app.main:app --reload
 http://127.0.0.1:8000
 ```
 
+聊天 UI 地址：
+
+```text
+http://127.0.0.1:8000/app/
+```
+
 ## 6. API 快速验证
+
+### Web UI
+
+启动 API 后，浏览器打开：
+
+```text
+http://127.0.0.1:8000/app/
+```
+
+默认本地 API key 使用 `dev-key`，workspace 使用 `public`。页面支持：
+
+- 创建 chat session
+- 刷新 session 列表
+- 加载 session history
+- 通过 `POST /chat/stream` 流式展示回答
+- 展示回答 sources
 
 ### Health
 
@@ -534,7 +558,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-285 passed
+288 passed
 ```
 
 ### Pipeline Smoke
@@ -795,10 +819,11 @@ Repository -> Settings -> Actions -> General
 
 ### 前端与体验
 
-- 当前没有前端 UI。
+- 最小聊天 UI 已完成：`GET /app/`。
+- 聊天 UI 已支持 session 创建、session 列表、history 加载和 SSE streaming。
 - 没有管理后台。
 - 没有文档上传页面。
-- 没有聊天页面。
+- 聊天页面还没有文档上传入口和更完整的错误恢复体验。
 
 ### 生产部署
 
@@ -896,7 +921,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-前端聊天 UI：接入普通 chat、session history 和 SSE streaming
+前端文档上传 UI：接入 POST /documents 和 POST /documents/reindex
 ```
 
 原因：
@@ -909,7 +934,7 @@ OPENAI_API_KEY
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming 和底层 OpenAI Responses token streaming 都已完成，下一步可以开始做最小前端聊天 UI。
+- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming 和最小聊天 UI 都已完成，下一步可以把文档上传和 reindex 接入 UI。
 
 启用 OpenAI embedding 后可以先跑：
 

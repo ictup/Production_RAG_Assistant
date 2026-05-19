@@ -6,3 +6,7 @@ deterministic evals, and CI gate.
 Start here:
 
 - [Project handoff and quick start](docs/PROJECT_HANDOFF.md)
+
+Local web UI after starting the API:
+
+- http://127.0.0.1:8000/app/
