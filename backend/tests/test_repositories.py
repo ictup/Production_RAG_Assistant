@@ -340,6 +340,25 @@ async def test_ingest_document_adds_document_and_chunks() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ingest_document_can_commit_transaction() -> None:
+    session = FakeAsyncSession()
+    repository = DocumentRepository(session)  # type: ignore[arg-type]
+    raw_document = make_raw_document()
+    chunks = chunk_document(raw_document, chunk_size_tokens=40, chunk_overlap_tokens=5)
+    embeddings = [make_embedding() for _ in chunks]
+
+    await repository.ingest_document(
+        raw_document,
+        chunks,
+        chunk_embeddings=embeddings,
+        commit=True,
+    )
+
+    assert session.flushed is True
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
 async def test_ingest_document_requires_embeddings_for_new_document() -> None:
     session = FakeAsyncSession()
     repository = DocumentRepository(session)  # type: ignore[arg-type]

@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -10,10 +11,23 @@ from backend.app.db.repositories import (
     DocumentDetailResult,
     DocumentListResult,
     DocumentSummary,
+    IngestDocumentResult,
 )
 from backend.app.main import create_app
+from backend.app.rag.embeddings import FakeEmbeddingClient
+from ingestion.models import Chunk, RawDocument
 
 AUTH_HEADERS = {"Authorization": "Bearer dev-key"}
+
+
+class RecordingEmbeddingClient(FakeEmbeddingClient):
+    def __init__(self) -> None:
+        super().__init__(dimension=8, model_name="test-fake-embedding")
+        self.calls: list[list[str]] = []
+
+    async def embed_texts(self, texts):
+        self.calls.append(list(texts))
+        return await super().embed_texts(texts)
 
 
 class FakeDocumentRepository:
@@ -25,9 +39,42 @@ class FakeDocumentRepository:
         self.result = result or DocumentListResult(total=0, documents=[])
         self.detail_result = detail_result
         self.delete_result = False
+        self.existing_document_id: uuid.UUID | None = None
         self.list_calls: list[tuple[str, int, int]] = []
         self.detail_calls: list[tuple[uuid.UUID, str]] = []
         self.delete_calls: list[tuple[uuid.UUID, str, bool]] = []
+        self.hash_calls: list[str] = []
+        self.ingest_calls: list[dict[str, Any]] = []
+
+    async def get_document_id_by_hash(self, content_hash: str) -> uuid.UUID | None:
+        self.hash_calls.append(content_hash)
+        return self.existing_document_id
+
+    async def ingest_document(
+        self,
+        raw_document: RawDocument,
+        chunks: list[Chunk],
+        *,
+        content_hash: str | None = None,
+        chunk_embeddings: list[list[float]] | None = None,
+        commit: bool = False,
+    ) -> IngestDocumentResult:
+        document_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+        self.ingest_calls.append(
+            {
+                "raw_document": raw_document,
+                "chunks": chunks,
+                "content_hash": content_hash,
+                "chunk_embeddings": chunk_embeddings,
+                "commit": commit,
+            }
+        )
+        return IngestDocumentResult(
+            document_id=document_id,
+            content_hash=content_hash or "unknown",
+            inserted=True,
+            chunks_inserted=len(chunks),
+        )
 
     async def list_documents(
         self,
@@ -98,12 +145,19 @@ def make_document_detail_result() -> DocumentDetailResult:
     )
 
 
-def build_client(fake_repository: FakeDocumentRepository) -> TestClient:
+def build_client(
+    fake_repository: FakeDocumentRepository,
+    embedding_client: RecordingEmbeddingClient | None = None,
+) -> TestClient:
     settings = Settings(api_keys="dev-key")
+    embedding_client = embedding_client or RecordingEmbeddingClient()
     app = create_app(settings)
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[routes_documents.get_document_repository] = (
         lambda: fake_repository
+    )
+    app.dependency_overrides[routes_documents.get_embedding_client] = (
+        lambda: embedding_client
     )
     return TestClient(app)
 
@@ -184,6 +238,123 @@ def test_documents_route_rejects_invalid_pagination() -> None:
     assert limit_response.status_code == 422
     assert offset_response.status_code == 422
     assert fake_repository.list_calls == []
+
+
+def test_create_document_route_ingests_markdown_for_workspace() -> None:
+    fake_repository = FakeDocumentRepository()
+    embedding_client = RecordingEmbeddingClient()
+    client = build_client(fake_repository, embedding_client)
+
+    response = client.post(
+        "/documents",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "  tenant-a  ",
+        },
+        json={
+            "source_uri": "uploads/flashattention.md",
+            "markdown": """---
+topic: "attention"
+---
+
+# FlashAttention
+
+FlashAttention reduces HBM traffic.
+""",
+            "title": "Uploaded FlashAttention",
+            "metadata": {"difficulty": "advanced"},
+            "chunk_size_tokens": 40,
+            "chunk_overlap_tokens": 5,
+        },
+    )
+
+    assert response.status_code == 201
+    assert len(fake_repository.hash_calls) == 1
+    assert len(fake_repository.ingest_calls) == 1
+    ingest_call = fake_repository.ingest_calls[0]
+    raw_document = ingest_call["raw_document"]
+    assert raw_document.workspace_id == "tenant-a"
+    assert raw_document.title == "Uploaded FlashAttention"
+    assert raw_document.source_uri == "uploads/flashattention.md"
+    assert raw_document.metadata == {
+        "topic": "attention",
+        "difficulty": "advanced",
+    }
+    assert ingest_call["commit"] is True
+    assert len(ingest_call["chunks"]) == 1
+    assert len(ingest_call["chunk_embeddings"]) == 1
+    assert embedding_client.calls != []
+    body = response.json()
+    assert body["workspace_id"] == "tenant-a"
+    assert body["document_id"] == "33333333-3333-3333-3333-333333333333"
+    assert body["inserted"] is True
+    assert body["chunks_inserted"] == 1
+    assert body["reason"] is None
+
+
+def test_create_document_route_skips_duplicate_before_embedding() -> None:
+    existing_document_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+    fake_repository = FakeDocumentRepository()
+    fake_repository.existing_document_id = existing_document_id
+    embedding_client = RecordingEmbeddingClient()
+    client = build_client(fake_repository, embedding_client)
+
+    response = client.post(
+        "/documents",
+        headers=AUTH_HEADERS,
+        json={
+            "source_uri": "uploads/flashattention.md",
+            "markdown": "# FlashAttention\n\nFlashAttention reduces HBM traffic.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(fake_repository.hash_calls) == 1
+    assert fake_repository.ingest_calls == []
+    assert embedding_client.calls == []
+    assert response.json() == {
+        "workspace_id": "public",
+        "document_id": str(existing_document_id),
+        "content_hash": fake_repository.hash_calls[0],
+        "inserted": False,
+        "chunks_inserted": 0,
+        "reason": "duplicate_content_hash",
+    }
+
+
+def test_create_document_route_rejects_invalid_front_matter() -> None:
+    fake_repository = FakeDocumentRepository()
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/documents",
+        headers=AUTH_HEADERS,
+        json={
+            "source_uri": "uploads/bad.md",
+            "markdown": "---\n- not\n- a\n- mapping\n---\nBody",
+        },
+    )
+
+    assert response.status_code == 422
+    assert fake_repository.hash_calls == []
+    assert fake_repository.ingest_calls == []
+
+
+def test_create_document_route_requires_api_key() -> None:
+    fake_repository = FakeDocumentRepository()
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/documents",
+        json={
+            "source_uri": "uploads/flashattention.md",
+            "markdown": "# FlashAttention\n\nFlashAttention reduces HBM traffic.",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "missing api key"}
+    assert fake_repository.ingest_calls == []
 
 
 def test_document_detail_route_returns_document_and_chunks() -> None:

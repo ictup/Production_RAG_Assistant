@@ -1,17 +1,25 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.security import require_api_key
 from backend.app.db.repositories import DocumentRepository
 from backend.app.db.session import get_db_session
+from backend.app.rag.embedding_pipeline import embed_chunks
+from backend.app.rag.embeddings import EmbeddingClient, build_embedding_client
 from backend.app.schemas.documents import (
+    CreateDocumentRequest,
+    CreateDocumentResponse,
     DeleteDocumentResponse,
     DocumentDetailResponse,
     DocumentsResponse,
 )
+from ingestion.chunking import chunk_document
+from ingestion.hashing import compute_content_hash
+from ingestion.parse_markdown import load_markdown_text
 
 router = APIRouter(tags=["documents"])
 
@@ -20,6 +28,10 @@ async def get_document_repository(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DocumentRepository:
     return DocumentRepository(session=session)
+
+
+async def get_embedding_client() -> EmbeddingClient:
+    return build_embedding_client()
 
 
 def normalize_workspace_id(workspace_id: str | None) -> str:
@@ -49,6 +61,83 @@ async def list_documents(
         limit=limit,
         offset=offset,
         result=result,
+    )
+
+
+@router.post("/documents", response_model=CreateDocumentResponse)
+async def create_document(
+    request: CreateDocumentRequest,
+    response: Response,
+    _api_key: Annotated[str, Depends(require_api_key)],
+    repository: Annotated[DocumentRepository, Depends(get_document_repository)],
+    embedding_client: Annotated[EmbeddingClient, Depends(get_embedding_client)],
+    workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
+) -> CreateDocumentResponse:
+    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    try:
+        raw_document = load_markdown_text(
+            request.markdown,
+            source_uri=request.source_uri,
+            default_workspace_id=normalized_workspace_id,
+            title=request.title,
+            author=request.author,
+            visibility=request.visibility,
+            metadata=request.metadata,
+        )
+    except (ValueError, ValidationError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+    content_hash = compute_content_hash(raw_document.text)
+    existing_document_id = await repository.get_document_id_by_hash(content_hash)
+    if existing_document_id is not None:
+        return CreateDocumentResponse(
+            workspace_id=normalized_workspace_id,
+            document_id=str(existing_document_id),
+            content_hash=content_hash,
+            inserted=False,
+            chunks_inserted=0,
+            reason="duplicate_content_hash",
+        )
+
+    try:
+        chunks = chunk_document(
+            raw_document,
+            chunk_size_tokens=request.chunk_size_tokens,
+            chunk_overlap_tokens=request.chunk_overlap_tokens,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+    if not chunks:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="document must produce at least one chunk",
+        )
+
+    chunk_embeddings = await embed_chunks(chunks, embedding_client)
+    result = await repository.ingest_document(
+        raw_document,
+        chunks,
+        content_hash=content_hash,
+        chunk_embeddings=chunk_embeddings,
+        commit=True,
+    )
+    if result.inserted:
+        response.status_code = status.HTTP_201_CREATED
+
+    return CreateDocumentResponse(
+        workspace_id=normalized_workspace_id,
+        document_id=str(result.document_id),
+        content_hash=result.content_hash,
+        inserted=result.inserted,
+        chunks_inserted=result.chunks_inserted,
+        reason=result.reason,
     )
 
 

@@ -5,6 +5,7 @@ import pytest
 from ingestion.parse_markdown import (
     discover_markdown_files,
     load_markdown_document,
+    load_markdown_text,
     split_front_matter,
 )
 
@@ -66,6 +67,41 @@ def test_load_markdown_document_infers_title_from_first_heading(tmp_path: Path) 
     assert raw_document.workspace_id == "public"
 
 
+def test_load_markdown_text_uses_request_workspace_and_merges_metadata() -> None:
+    markdown = """---
+title: "Front Matter Title"
+workspace_id: "ignored-workspace"
+visibility: "private"
+author: "Front Matter Author"
+topic: "attention"
+---
+
+# Body Title
+
+FlashAttention reduces HBM traffic.
+"""
+
+    raw_document = load_markdown_text(
+        markdown,
+        source_uri="uploads/flashattention.md",
+        default_workspace_id="tenant-a",
+        title="Request Title",
+        metadata={"difficulty": "advanced"},
+    )
+
+    assert raw_document.title == "Request Title"
+    assert raw_document.source_type == "markdown"
+    assert raw_document.source_uri == "uploads/flashattention.md"
+    assert raw_document.workspace_id == "tenant-a"
+    assert raw_document.visibility == "private"
+    assert raw_document.author == "Front Matter Author"
+    assert raw_document.metadata == {
+        "topic": "attention",
+        "difficulty": "advanced",
+    }
+    assert "FlashAttention reduces HBM traffic." in raw_document.text
+
+
 def test_discover_markdown_files_returns_sorted_markdown_paths(tmp_path: Path) -> None:
     first = tmp_path / "b.md"
     second = tmp_path / "nested" / "a.markdown"
@@ -85,4 +121,3 @@ def test_split_front_matter_rejects_non_mapping_yaml() -> None:
 
     with pytest.raises(ValueError, match="YAML mapping"):
         split_front_matter(markdown)
-

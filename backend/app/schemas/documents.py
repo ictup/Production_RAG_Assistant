@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.app.db.repositories import (
     DocumentChunkSummary,
@@ -9,6 +9,62 @@ from backend.app.db.repositories import (
     DocumentListResult,
     DocumentSummary,
 )
+from ingestion.chunking import (
+    DEFAULT_CHUNK_OVERLAP_TOKENS,
+    DEFAULT_CHUNK_SIZE_TOKENS,
+)
+
+
+class CreateDocumentRequest(BaseModel):
+    source_uri: str = Field(min_length=1, max_length=2048)
+    markdown: str = Field(min_length=1, max_length=1_000_000)
+    title: str | None = Field(default=None, max_length=512)
+    author: str | None = Field(default=None, max_length=512)
+    visibility: str | None = Field(default=None, max_length=64)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    chunk_size_tokens: int = Field(
+        default=DEFAULT_CHUNK_SIZE_TOKENS,
+        ge=1,
+        le=4000,
+    )
+    chunk_overlap_tokens: int = Field(
+        default=DEFAULT_CHUNK_OVERLAP_TOKENS,
+        ge=0,
+        le=1000,
+    )
+
+    @field_validator("source_uri", "markdown")
+    @classmethod
+    def required_text_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value must not be blank")
+        return value
+
+    @field_validator("title", "author", "visibility")
+    @classmethod
+    def optional_text_must_be_trimmed(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    @model_validator(mode="after")
+    def chunk_overlap_must_be_smaller_than_size(self) -> "CreateDocumentRequest":
+        if self.chunk_overlap_tokens >= self.chunk_size_tokens:
+            raise ValueError(
+                "chunk_overlap_tokens must be smaller than chunk_size_tokens"
+            )
+        return self
+
+
+class CreateDocumentResponse(BaseModel):
+    workspace_id: str
+    document_id: str
+    content_hash: str
+    inserted: bool
+    chunks_inserted: int = Field(ge=0)
+    reason: str | None = None
 
 
 class DocumentItem(BaseModel):

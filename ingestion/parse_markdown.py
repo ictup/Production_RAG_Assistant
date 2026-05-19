@@ -109,3 +109,41 @@ def load_markdown_document(
         metadata=metadata,
         author=front_matter.get("author"),
     )
+
+
+def load_markdown_text(
+    markdown: str,
+    *,
+    source_uri: str,
+    default_workspace_id: str = "public",
+    title: str | None = None,
+    author: str | None = None,
+    visibility: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> RawDocument:
+    front_matter, body = split_front_matter(markdown)
+    front_matter_metadata = {
+        key: value
+        for key, value in front_matter.items()
+        if key not in RESERVED_FRONT_MATTER_KEYS
+    }
+    resolved_metadata = {
+        **front_matter_metadata,
+        **(metadata or {}),
+    }
+    fallback_title = Path(source_uri).stem or "document"
+
+    return RawDocument(
+        title=str(
+            title
+            or front_matter.get("title")
+            or infer_title(body, fallback_title)
+        ),
+        source_type="markdown",
+        source_uri=source_uri,
+        text=clean_text(body),
+        workspace_id=default_workspace_id,
+        visibility=str(visibility or front_matter.get("visibility") or "public"),
+        metadata=resolved_metadata,
+        author=author if author is not None else front_matter.get("author"),
+    )

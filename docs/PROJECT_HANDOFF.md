@@ -28,6 +28,7 @@ https://github.com/ictup/Production_RAG_Assistant.git
 - 健康检查接口：`GET /health`
 - RAG 聊天接口：`POST /chat`
 - 聊天日志查询接口：`GET /chat/logs`
+- 文档上传接口：`POST /documents`
 - 文档列表接口：`GET /documents`
 - 文档详情接口：`GET /documents/{document_id}`
 - 文档删除接口：`DELETE /documents/{document_id}`
@@ -315,6 +316,25 @@ curl.exe http://127.0.0.1:8000/chat/logs `
 
 ### Documents
 
+上传 Markdown 文档：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/documents `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -H "X-Workspace-ID: public" `
+  -d "{\"source_uri\":\"uploads/flashattention.md\",\"markdown\":\"# FlashAttention`n`nFlashAttention reduces HBM traffic.\"}"
+```
+
+响应会包含：
+
+- `workspace_id`
+- `document_id`
+- `content_hash`
+- `inserted`
+- `chunks_inserted`
+- `reason`
+
 ```powershell
 curl.exe "http://127.0.0.1:8000/documents?limit=20&offset=0" `
   -H "Authorization: Bearer dev-key" `
@@ -396,7 +416,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-242 passed
+248 passed
 ```
 
 ### Pipeline Smoke
@@ -643,7 +663,7 @@ Repository -> Settings -> Actions -> General
 - 文档列表 API 已完成：`GET /documents`。
 - 文档详情 API 已完成：`GET /documents/{document_id}`。
 - 文档删除 API 已完成：`DELETE /documents/{document_id}`。
-- 文档上传 API。
+- 文档上传 API 已完成：`POST /documents`。
 - 文档重新索引 API。
 - 当前已有 CLI 级 chunk embedding reindex，但还没有 API 入口。
 - workspace 管理 API。
@@ -750,7 +770,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-文档管理 API 第四步：上传 Markdown 文档
+文档管理 API 第五步：重建文档索引
 ```
 
 原因：
@@ -763,7 +783,7 @@ OPENAI_API_KEY
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- 文档列表、详情和删除 API 已完成，下一步做 Markdown 上传接口，把现有 CLI ingestion 能力开放给 API。
+- 文档列表、详情、删除和上传 API 已完成，下一步做 reindex API，把已有 chunk embedding reindex CLI 开放给 API。
 
 启用 OpenAI embedding 后可以先跑：
 

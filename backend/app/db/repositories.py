@@ -199,6 +199,7 @@ class DocumentRepository:
         *,
         content_hash: str | None = None,
         chunk_embeddings: Sequence[Sequence[float]] | None = None,
+        commit: bool = False,
     ) -> IngestDocumentResult:
         if not chunks:
             raise ValueError("cannot ingest a document without chunks")
@@ -250,6 +251,8 @@ class DocumentRepository:
         self.session.add(document)
         self.session.add_all(chunk_models)
         await self.session.flush()
+        if commit:
+            await self.session.commit()
 
         return IngestDocumentResult(
             document_id=document_id,
