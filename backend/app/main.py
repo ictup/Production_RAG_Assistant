@@ -10,6 +10,7 @@ from backend.app.api import (
     routes_documents,
     routes_health,
     routes_metrics,
+    routes_workspaces,
 )
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.cors import add_cors_middleware
@@ -39,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     add_cors_middleware(app, settings)
 
     app.include_router(routes_health.router)
+    app.include_router(routes_workspaces.router)
     app.include_router(routes_chat.router)
     app.include_router(routes_chat_sessions.router)
     app.include_router(routes_documents.router)

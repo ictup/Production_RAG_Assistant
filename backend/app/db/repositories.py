@@ -13,6 +13,7 @@ from backend.app.db.models import (
     ChatSession,
     Document,
     DocumentChunk,
+    Workspace,
 )
 from backend.app.rag.embeddings import validate_embedding_batch
 from ingestion.hashing import compute_content_hash
@@ -63,6 +64,26 @@ class ChatSessionListResult:
 
 
 @dataclass(frozen=True)
+class CreateWorkspaceInput:
+    id: str
+    name: str | None = None
+    description: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class CreateWorkspaceResult:
+    workspace: Workspace
+    created: bool
+
+
+@dataclass(frozen=True)
+class WorkspaceListResult:
+    total: int
+    workspaces: list[Workspace]
+
+
+@dataclass(frozen=True)
 class DocumentSummary:
     id: uuid.UUID
     workspace_id: str
@@ -102,6 +123,88 @@ class DocumentListResult:
 class DocumentDetailResult:
     document: DocumentSummary
     chunks: list[DocumentChunkSummary]
+
+
+def normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+class WorkspaceRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create_workspace(
+        self,
+        workspace_input: CreateWorkspaceInput,
+        *,
+        commit: bool = False,
+    ) -> CreateWorkspaceResult:
+        workspace_id = workspace_input.id.strip()
+        if not workspace_id:
+            raise ValueError("workspace id must not be blank")
+
+        existing_workspace = await self.get_workspace(workspace_id=workspace_id)
+        if existing_workspace is not None:
+            return CreateWorkspaceResult(
+                workspace=existing_workspace,
+                created=False,
+            )
+
+        workspace = Workspace(
+            id=workspace_id,
+            name=normalize_optional_text(workspace_input.name),
+            description=normalize_optional_text(workspace_input.description),
+            metadata_=dict(workspace_input.metadata or {}),
+        )
+        self.session.add(workspace)
+        await self.session.flush()
+        if commit:
+            await self.session.commit()
+        return CreateWorkspaceResult(workspace=workspace, created=True)
+
+    async def list_workspaces(
+        self,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        workspace_ids: frozenset[str] | None = None,
+    ) -> WorkspaceListResult:
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+        if offset < 0:
+            raise ValueError("offset must not be negative")
+        if workspace_ids == frozenset():
+            return WorkspaceListResult(total=0, workspaces=[])
+
+        filters = ()
+        if workspace_ids is not None:
+            filters = (Workspace.id.in_(sorted(workspace_ids)),)
+
+        total_statement = select(func.count()).select_from(Workspace).where(*filters)
+        total = await self.session.scalar(total_statement)
+        statement = (
+            select(Workspace)
+            .where(*filters)
+            .order_by(Workspace.updated_at.desc(), Workspace.id.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        workspaces = list((await self.session.scalars(statement)).all())
+        return WorkspaceListResult(
+            total=int(total or 0),
+            workspaces=workspaces,
+        )
+
+    async def get_workspace(self, *, workspace_id: str) -> Workspace | None:
+        workspace_id = workspace_id.strip()
+        if not workspace_id:
+            raise ValueError("workspace id must not be blank")
+
+        statement = select(Workspace).where(Workspace.id == workspace_id)
+        return await self.session.scalar(statement)
 
 
 class DocumentRepository:

@@ -71,6 +71,9 @@ docs/EVAL_TRENDS.md
 - chat session 列表接口：`GET /chat/sessions`
 - chat session 详情接口：`GET /chat/sessions/{session_id}`
 - chat session 历史日志接口：`GET /chat/sessions/{session_id}/logs`
+- workspace 创建接口：`POST /workspaces`
+- workspace 列表接口：`GET /workspaces`
+- workspace 详情接口：`GET /workspaces/{workspace_id}`
 - 文档上传接口：`POST /documents`
 - 文档列表接口：`GET /documents`
 - 文档详情接口：`GET /documents/{document_id}`
@@ -176,7 +179,7 @@ docs/EVAL_TRENDS.md
 ```text
 backend/
   app/
-    api/              FastAPI routes 和 API security
+    api/              FastAPI routes、API security、workspace routes
     core/             config、logging、request id
     db/               models、repositories、session、migrations
     observability/    Prometheus metrics middleware 和 registry
@@ -468,6 +471,33 @@ curl.exe http://127.0.0.1:8000/health
 {"status":"ok"}
 ```
 
+### Workspaces
+
+创建 workspace：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/workspaces `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -d "{\"id\":\"tenant-a\",\"name\":\"Tenant A\",\"description\":\"GPU systems team\",\"metadata\":{\"tier\":\"internal\"}}"
+```
+
+查询可访问 workspace 列表：
+
+```powershell
+curl.exe "http://127.0.0.1:8000/workspaces?limit=20&offset=0" `
+  -H "Authorization: Bearer dev-key"
+```
+
+查询 workspace 详情：
+
+```powershell
+curl.exe http://127.0.0.1:8000/workspaces/tenant-a `
+  -H "Authorization: Bearer dev-key"
+```
+
+如果 `API_KEY_WORKSPACE_ACCESS` 限制了当前 API key，`GET /workspaces` 只返回该 key 可访问的 workspace；访问未授权 workspace 会返回 `403`。
+
 ### Chat
 
 ```powershell
@@ -722,7 +752,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-359 passed
+379 passed
 ```
 
 ### Pipeline Smoke
@@ -997,7 +1027,8 @@ Repository -> Settings -> Actions -> General
 - 当前已有 CLI 和 API 两种 chunk embedding reindex 入口。
 - chat session 表和 `chat_logs.session_id` 迁移已完成。
 - chat session repository 和基础 API 已完成：`POST /chat/sessions`、`GET /chat/sessions`、`GET /chat/sessions/{session_id}`。
-- workspace 管理 API。
+- workspace registry 表、repository 和基础 API 已完成：`POST /workspaces`、`GET /workspaces`、`GET /workspaces/{workspace_id}`。
+- documents/chat sessions 目前仍通过字符串 `workspace_id` 隔离，尚未加 workspace 外键和存在性校验。
 - `/chat` 已支持可选 `session_id`，并会把 chat log 挂到对应会话。
 - conversation history API 已完成：`GET /chat/sessions/{session_id}/logs`。
 - streaming chat API 已完成：`POST /chat/stream`。
@@ -1107,13 +1138,14 @@ OPENAI_API_KEY
 7. dashboard 和 alert。已完成。
 8. eval 趋势记录。已完成。
 9. API key workspace 访问控制。已完成。
+10. workspace 管理 API。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-workspace 管理 API
+workspace registry 与文档/会话写入路径的存在性校验
 ```
 
 原因：
@@ -1126,7 +1158,7 @@ workspace 管理 API
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose、CORS、基础 rate limit、配置/secrets 文档、部署 runbook、dashboard 和 alert 模板、trace/span 日志、慢查询监控方案、eval 趋势记录和 API key workspace 访问控制都已完成，下一步补 workspace 管理 API。
+- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose、CORS、基础 rate limit、配置/secrets 文档、部署 runbook、dashboard 和 alert 模板、trace/span 日志、慢查询监控方案、eval 趋势记录、API key workspace 访问控制和 workspace 管理 API 都已完成，下一步把文档/会话写入路径接到 workspace registry 的存在性校验上。
 
 启用 OpenAI embedding 后可以先跑：
 

@@ -4,13 +4,21 @@ from typing import Any
 
 import pytest
 
-from backend.app.db.models import ChatLog, ChatSession, Document, DocumentChunk
+from backend.app.db.models import (
+    ChatLog,
+    ChatSession,
+    Document,
+    DocumentChunk,
+    Workspace,
+)
 from backend.app.db.repositories import (
     ChatLogRepository,
     ChatSessionRepository,
     CreateChatLogInput,
     CreateChatSessionInput,
+    CreateWorkspaceInput,
     DocumentRepository,
+    WorkspaceRepository,
 )
 from ingestion.chunking import chunk_document
 from ingestion.hashing import compute_content_hash
@@ -159,6 +167,140 @@ def make_chat_session_model() -> ChatSession:
         created_at=datetime(2026, 5, 18, 8, 0, tzinfo=UTC),
         updated_at=datetime(2026, 5, 18, 9, 0, tzinfo=UTC),
     )
+
+
+def make_workspace_model() -> Workspace:
+    return Workspace(
+        id="tenant-a",
+        name="Tenant A",
+        description="GPU systems team",
+        metadata_={"tier": "internal"},
+        created_at=datetime(2026, 5, 18, 8, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 18, 9, 0, tzinfo=UTC),
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_adds_workspace_model() -> None:
+    session = FakeAsyncSession()
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.create_workspace(
+        CreateWorkspaceInput(
+            id=" tenant-a ",
+            name=" Tenant A ",
+            description=" GPU systems team ",
+            metadata={"tier": "internal"},
+        )
+    )
+
+    assert result.created is True
+    workspace = result.workspace
+    assert isinstance(workspace, Workspace)
+    assert workspace.id == "tenant-a"
+    assert workspace.name == "Tenant A"
+    assert workspace.description == "GPU systems team"
+    assert workspace.metadata_ == {"tier": "internal"}
+    assert session.added == [workspace]
+    assert session.flushed is True
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_returns_existing_workspace_without_insert() -> None:
+    workspace = make_workspace_model()
+    session = FakeAsyncSession(scalar_result=workspace)
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.create_workspace(CreateWorkspaceInput(id="tenant-a"))
+
+    assert result.created is False
+    assert result.workspace == workspace
+    assert session.added == []
+    assert session.flushed is False
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_can_commit_transaction() -> None:
+    session = FakeAsyncSession()
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    await repository.create_workspace(CreateWorkspaceInput(id="tenant-a"), commit=True)
+
+    assert session.flushed is True
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_rejects_blank_id() -> None:
+    session = FakeAsyncSession()
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="workspace id"):
+        await repository.create_workspace(CreateWorkspaceInput(id="   "))
+
+
+@pytest.mark.asyncio
+async def test_list_workspaces_filters_allowed_workspace_ids() -> None:
+    workspace = make_workspace_model()
+    session = FakeAsyncSession(
+        scalar_result=1,
+        scalars_result=[workspace],
+    )
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.list_workspaces(
+        workspace_ids=frozenset({"tenant-a"}),
+        limit=10,
+        offset=5,
+    )
+
+    assert result.total == 1
+    assert result.workspaces == [workspace]
+    assert session.scalar_statement is not None
+    assert session.scalars_statement is not None
+    assert "workspaces.id" in str(session.scalar_statement)
+    compiled = str(session.scalars_statement)
+    assert "workspaces.id" in compiled
+    assert "ORDER BY workspaces.updated_at DESC" in compiled
+
+
+@pytest.mark.asyncio
+async def test_list_workspaces_returns_empty_without_query_for_empty_set() -> None:
+    session = FakeAsyncSession()
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.list_workspaces(workspace_ids=frozenset())
+
+    assert result.total == 0
+    assert result.workspaces == []
+    assert session.scalar_statement is None
+    assert session.scalars_statement is None
+
+
+@pytest.mark.asyncio
+async def test_list_workspaces_rejects_invalid_pagination() -> None:
+    session = FakeAsyncSession()
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="limit"):
+        await repository.list_workspaces(limit=0)
+
+    with pytest.raises(ValueError, match="offset"):
+        await repository.list_workspaces(offset=-1)
+
+
+@pytest.mark.asyncio
+async def test_get_workspace_queries_by_trimmed_id() -> None:
+    workspace = make_workspace_model()
+    session = FakeAsyncSession(scalar_result=workspace)
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.get_workspace(workspace_id=" tenant-a ")
+
+    assert result == workspace
+    assert session.scalar_statement is not None
+    assert "workspaces.id" in str(session.scalar_statement)
 
 
 @pytest.mark.asyncio

@@ -7,16 +7,29 @@ from backend.app.db.models import (
     ChatSession,
     Document,
     DocumentChunk,
+    Workspace,
 )
 
 
 def test_base_metadata_contains_core_document_tables() -> None:
     assert set(Base.metadata.tables) == {
+        "workspaces",
         "documents",
         "document_chunks",
         "chat_sessions",
         "chat_logs",
     }
+
+
+def test_workspace_metadata_column_uses_safe_python_attribute_name() -> None:
+    assert Workspace.metadata_.name == "metadata"
+    assert Workspace.__table__.c["metadata"] is Workspace.metadata_.property.columns[0]
+
+
+def test_workspace_has_updated_at_index() -> None:
+    index_names = {index.name for index in Workspace.__table__.indexes}
+
+    assert "workspaces_updated_at_idx" in index_names
 
 
 def test_document_metadata_column_uses_safe_python_attribute_name() -> None:
