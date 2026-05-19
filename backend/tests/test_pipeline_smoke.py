@@ -9,7 +9,9 @@ def make_settings() -> Settings:
         embedding_provider="fake",
         embedding_model="test-fake-embedding",
         generator_provider="fake",
+        reranker_provider="none",
         llm_model="fake-llm",
+        reranker_model="gpt-default",
         openai_api_key="test-key",
         openai_max_output_tokens=512,
     )
@@ -20,13 +22,17 @@ def test_build_pipeline_smoke_settings_applies_runtime_overrides() -> None:
         make_settings(),
         embedding_provider="openai",
         generator_provider="openai",
+        reranker_provider="openai",
         llm_model="gpt-test",
+        reranker_model="gpt-rerank",
         openai_max_output_tokens=123,
     )
 
     assert settings.embedding_provider == "openai"
     assert settings.generator_provider == "openai"
+    assert settings.reranker_provider == "openai"
     assert settings.llm_model == "gpt-test"
+    assert settings.reranker_model == "gpt-rerank"
     assert settings.openai_max_output_tokens == 123
 
 

@@ -161,7 +161,9 @@ def test_build_trend_metadata_captures_runtime_settings() -> None:
         embedding_provider="openai",
         embedding_model="text-embedding-3-small",
         generator_provider="openai",
+        reranker_provider="openai",
         llm_model="gpt-test",
+        reranker_model="gpt-rerank",
         openai_api_key="test-key",
         openai_max_output_tokens=321,
     )
@@ -175,6 +177,8 @@ def test_build_trend_metadata_captures_runtime_settings() -> None:
         "embedding_model": "text-embedding-3-small",
         "generator_provider": "openai",
         "llm_model": "gpt-test",
+        "reranker_provider": "openai",
+        "reranker_model": "gpt-rerank",
         "vector_top_k": 7,
         "sparse_top_k": 8,
         "fused_top_k": 9,

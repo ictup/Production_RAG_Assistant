@@ -41,7 +41,8 @@ class Settings(BaseSettings):
     rate_limit_excluded_paths: str = (
         "/health,/metrics,/app,/openapi.json,/docs,/redoc"
     )
-    reranker_provider: Literal["none"] = "none"
+    reranker_provider: Literal["none", "openai"] = "none"
+    reranker_model: str = "gpt-5.4-nano"
     rerank_top_n: int = 5
     vector_top_k: int = 20
     sparse_top_k: int = 20

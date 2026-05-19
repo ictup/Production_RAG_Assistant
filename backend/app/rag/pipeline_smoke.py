@@ -7,6 +7,7 @@ from backend.app.db.session import get_sessionmaker
 from backend.app.rag.pipeline import ChatPipelineRequest, RagPipeline
 
 ProviderName = Literal["fake", "openai"]
+RerankerProviderName = Literal["none", "openai"]
 
 
 async def run_pipeline_smoke(
@@ -54,7 +55,9 @@ def build_pipeline_smoke_settings(
     *,
     embedding_provider: ProviderName | None = None,
     generator_provider: ProviderName | None = None,
+    reranker_provider: RerankerProviderName | None = None,
     llm_model: str | None = None,
+    reranker_model: str | None = None,
     openai_max_output_tokens: int | None = None,
 ) -> Settings:
     settings = settings or get_settings()
@@ -63,8 +66,12 @@ def build_pipeline_smoke_settings(
         updates["embedding_provider"] = embedding_provider
     if generator_provider is not None:
         updates["generator_provider"] = generator_provider
+    if reranker_provider is not None:
+        updates["reranker_provider"] = reranker_provider
     if llm_model is not None:
         updates["llm_model"] = llm_model
+    if reranker_model is not None:
+        updates["reranker_model"] = reranker_model
     if openai_max_output_tokens is not None:
         if openai_max_output_tokens <= 0:
             raise ValueError("openai_max_output_tokens must be greater than zero")
@@ -95,9 +102,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override GENERATOR_PROVIDER for this smoke run.",
     )
     parser.add_argument(
+        "--reranker-provider",
+        choices=["none", "openai"],
+        default=None,
+        help="Override RERANKER_PROVIDER for this smoke run.",
+    )
+    parser.add_argument(
         "--llm-model",
         default=None,
         help="Override LLM_MODEL for this smoke run.",
+    )
+    parser.add_argument(
+        "--reranker-model",
+        default=None,
+        help="Override RERANKER_MODEL for this smoke run.",
     )
     parser.add_argument(
         "--openai-max-output-tokens",
@@ -113,7 +131,9 @@ async def async_main(argv: list[str] | None = None) -> int:
     settings = build_pipeline_smoke_settings(
         embedding_provider=args.embedding_provider,
         generator_provider=args.generator_provider,
+        reranker_provider=args.reranker_provider,
         llm_model=args.llm_model,
+        reranker_model=args.reranker_model,
         openai_max_output_tokens=args.openai_max_output_tokens,
     )
     return await run_pipeline_smoke(

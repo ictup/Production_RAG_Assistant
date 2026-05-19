@@ -19,6 +19,7 @@ from evals.trends import (
 DEFAULT_REPORT_OUTPUT = Path("evals/reports/latest.json")
 DEFAULT_TREND_OUTPUT = Path("evals/reports/trends.jsonl")
 ProviderName = Literal["fake", "openai"]
+RerankerProviderName = Literal["none", "openai"]
 
 
 def serialize_report(report: EvalRunReport) -> str:
@@ -54,7 +55,9 @@ def build_eval_settings(
     *,
     embedding_provider: ProviderName | None = None,
     generator_provider: ProviderName | None = None,
+    reranker_provider: RerankerProviderName | None = None,
     llm_model: str | None = None,
+    reranker_model: str | None = None,
     openai_max_output_tokens: int | None = None,
 ) -> Settings:
     settings = settings or get_settings()
@@ -63,8 +66,12 @@ def build_eval_settings(
         updates["embedding_provider"] = embedding_provider
     if generator_provider is not None:
         updates["generator_provider"] = generator_provider
+    if reranker_provider is not None:
+        updates["reranker_provider"] = reranker_provider
     if llm_model is not None:
         updates["llm_model"] = llm_model
+    if reranker_model is not None:
+        updates["reranker_model"] = reranker_model
     if openai_max_output_tokens is not None:
         if openai_max_output_tokens <= 0:
             raise ValueError("openai_max_output_tokens must be greater than zero")
@@ -87,6 +94,8 @@ def build_trend_metadata(
         "embedding_model": settings.embedding_model,
         "generator_provider": settings.generator_provider,
         "llm_model": settings.llm_model,
+        "reranker_provider": settings.reranker_provider,
+        "reranker_model": settings.reranker_model,
         "vector_top_k": args.vector_top_k,
         "sparse_top_k": args.sparse_top_k,
         "fused_top_k": args.fused_top_k,
@@ -118,9 +127,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override GENERATOR_PROVIDER for this eval run.",
     )
     parser.add_argument(
+        "--reranker-provider",
+        choices=["none", "openai"],
+        default=None,
+        help="Override RERANKER_PROVIDER for this eval run.",
+    )
+    parser.add_argument(
         "--llm-model",
         default=None,
         help="Override LLM_MODEL for this eval run.",
+    )
+    parser.add_argument(
+        "--reranker-model",
+        default=None,
+        help="Override RERANKER_MODEL for this eval run.",
     )
     parser.add_argument(
         "--openai-max-output-tokens",
@@ -169,7 +189,9 @@ async def async_main(argv: list[str] | None = None) -> int:
     settings = build_eval_settings(
         embedding_provider=args.embedding_provider,
         generator_provider=args.generator_provider,
+        reranker_provider=args.reranker_provider,
         llm_model=args.llm_model,
+        reranker_model=args.reranker_model,
         openai_max_output_tokens=args.openai_max_output_tokens,
     )
 
