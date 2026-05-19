@@ -3,6 +3,7 @@ const state = {
   workspaceId: localStorage.getItem("rag.workspaceId") || "public",
   sessionId: localStorage.getItem("rag.sessionId") || "",
   sessions: [],
+  documents: [],
   sending: false,
 };
 
@@ -18,6 +19,18 @@ const els = {
   chatForm: document.querySelector("#chat-form"),
   question: document.querySelector("#question"),
   send: document.querySelector("#send"),
+  reloadDocuments: document.querySelector("#reload-documents"),
+  documentForm: document.querySelector("#document-form"),
+  documentSourceUri: document.querySelector("#document-source-uri"),
+  documentTitle: document.querySelector("#document-title"),
+  documentFile: document.querySelector("#document-file"),
+  documentMarkdown: document.querySelector("#document-markdown"),
+  uploadDocument: document.querySelector("#upload-document"),
+  reindexSourceUri: document.querySelector("#reindex-source-uri"),
+  reindexDryRun: document.querySelector("#reindex-dry-run"),
+  reindexWrite: document.querySelector("#reindex-write"),
+  documentStatus: document.querySelector("#document-status"),
+  documentList: document.querySelector("#document-list"),
 };
 
 function init() {
@@ -26,6 +39,7 @@ function init() {
   bindEvents();
   renderEmptyMessages();
   void loadSessions();
+  void loadDocuments();
 }
 
 function bindEvents() {
@@ -50,6 +64,27 @@ function bindEvents() {
   els.chatForm.addEventListener("submit", (event) => {
     event.preventDefault();
     void submitQuestion();
+  });
+
+  els.reloadDocuments.addEventListener("click", () => {
+    void loadDocuments();
+  });
+
+  els.documentFile.addEventListener("change", () => {
+    void loadMarkdownFile();
+  });
+
+  els.documentForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void uploadDocument();
+  });
+
+  els.reindexDryRun.addEventListener("click", () => {
+    void reindexDocuments(true);
+  });
+
+  els.reindexWrite.addEventListener("click", () => {
+    void reindexDocuments(false);
   });
 }
 
@@ -102,6 +137,137 @@ async function loadSessions() {
     setStatus("Ready");
   } catch (error) {
     setError(error.message);
+  }
+}
+
+async function loadDocuments() {
+  setDocumentStatus("Loading documents");
+  try {
+    const response = await apiFetch("/documents?limit=50&offset=0");
+    const body = await response.json();
+    state.documents = body.documents || [];
+    renderDocuments();
+    setDocumentStatus(`Loaded ${state.documents.length} document(s)`);
+  } catch (error) {
+    setDocumentError(error.message);
+  }
+}
+
+async function loadMarkdownFile() {
+  const file = els.documentFile.files[0];
+  if (!file) {
+    return;
+  }
+
+  const text = await file.text();
+  els.documentMarkdown.value = text;
+  if (!els.documentSourceUri.value.trim()) {
+    els.documentSourceUri.value = `uploads/${file.name}`;
+  }
+  if (!els.documentTitle.value.trim()) {
+    els.documentTitle.value = file.name.replace(/\.(md|markdown|txt)$/i, "");
+  }
+}
+
+async function uploadDocument() {
+  const sourceUri = els.documentSourceUri.value.trim();
+  const markdown = els.documentMarkdown.value.trim();
+  const title = els.documentTitle.value.trim();
+  if (!sourceUri || !markdown) {
+    setDocumentError("source_uri and markdown are required");
+    return;
+  }
+
+  els.uploadDocument.disabled = true;
+  setDocumentStatus("Uploading document");
+  try {
+    const response = await apiFetch("/documents", {
+      method: "POST",
+      body: JSON.stringify({
+        source_uri: sourceUri,
+        markdown,
+        title: title || null,
+        metadata: {
+          uploaded_by: "web_ui",
+        },
+      }),
+    });
+    const body = await response.json();
+    const action = body.inserted ? "inserted" : "skipped";
+    setDocumentStatus(
+      `Document ${action}: ${body.chunks_inserted} chunk(s), ${body.reason || "ok"}`,
+    );
+    els.documentMarkdown.value = "";
+    els.documentFile.value = "";
+    await loadDocuments();
+  } catch (error) {
+    setDocumentError(error.message);
+  } finally {
+    els.uploadDocument.disabled = false;
+  }
+}
+
+async function reindexDocuments(dryRun) {
+  const sourceUri = els.reindexSourceUri.value.trim();
+  els.reindexDryRun.disabled = true;
+  els.reindexWrite.disabled = true;
+  setDocumentStatus(dryRun ? "Checking reindex impact" : "Reindexing documents");
+
+  try {
+    const response = await apiFetch("/documents/reindex", {
+      method: "POST",
+      body: JSON.stringify({
+        source_uri: sourceUri || null,
+        dry_run: dryRun,
+        batch_size: 32,
+      }),
+    });
+    const body = await response.json();
+    setDocumentStatus(
+      [
+        dryRun ? "Dry run complete" : "Reindex complete",
+        `${body.chunks_matched} matched`,
+        `${body.chunks_updated} updated`,
+        body.model,
+      ].join(" / "),
+    );
+    await loadDocuments();
+  } catch (error) {
+    setDocumentError(error.message);
+  } finally {
+    els.reindexDryRun.disabled = false;
+    els.reindexWrite.disabled = false;
+  }
+}
+
+function renderDocuments() {
+  els.documentList.innerHTML = "";
+  if (!state.documents.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No documents indexed yet";
+    els.documentList.append(empty);
+    return;
+  }
+
+  for (const documentItem of state.documents) {
+    const item = document.createElement("article");
+    item.className = "document-item";
+
+    const title = document.createElement("div");
+    title.className = "document-title";
+    title.textContent = documentItem.title || "Untitled document";
+
+    const uri = document.createElement("div");
+    uri.className = "document-uri";
+    uri.textContent = documentItem.source_uri;
+
+    const meta = document.createElement("div");
+    meta.className = "document-meta";
+    meta.textContent = `${documentItem.chunk_count} chunk(s) / ${documentItem.visibility}`;
+
+    item.append(title, uri, meta);
+    els.documentList.append(item);
   }
 }
 
@@ -369,6 +535,16 @@ function setStatus(message) {
 function setError(message) {
   els.status.classList.add("error");
   els.status.textContent = message || "Request failed";
+}
+
+function setDocumentStatus(message) {
+  els.documentStatus.classList.remove("error");
+  els.documentStatus.textContent = message;
+}
+
+function setDocumentError(message) {
+  els.documentStatus.classList.add("error");
+  els.documentStatus.textContent = message || "Document request failed";
 }
 
 init();

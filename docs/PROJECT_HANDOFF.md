@@ -45,7 +45,7 @@ https://github.com/ictup/Production_RAG_Assistant.git
 - 结构化请求日志中间件
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
-- Web UI：`GET /app/`，支持 session、history 和 SSE streaming chat
+- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传和 reindex
 
 ### 数据库与迁移
 
@@ -135,7 +135,7 @@ backend/
     db/               models、repositories、session、migrations
     observability/    Prometheus metrics middleware 和 registry
     rag/              retrieval、fusion、rerank、prompt、generation、pipeline
-    static/           由 FastAPI 托管的最小聊天 UI
+    static/           由 FastAPI 托管的最小 Web UI
   tests/              后端单元测试和集成风格测试
 
 ingestion/
@@ -291,6 +291,9 @@ http://127.0.0.1:8000/app/
 - 加载 session history
 - 通过 `POST /chat/stream` 流式展示回答
 - 展示回答 sources
+- 粘贴或选择 Markdown 文件并调用 `POST /documents`
+- 刷新文档列表
+- 调用 `POST /documents/reindex` 执行 dry-run 或写入式 reindex
 
 ### Health
 
@@ -819,11 +822,11 @@ Repository -> Settings -> Actions -> General
 
 ### 前端与体验
 
-- 最小聊天 UI 已完成：`GET /app/`。
+- 最小 Web UI 已完成：`GET /app/`。
 - 聊天 UI 已支持 session 创建、session 列表、history 加载和 SSE streaming。
+- 文档 UI 已支持 Markdown 上传、文档列表、reindex dry-run 和 write。
 - 没有管理后台。
-- 没有文档上传页面。
-- 聊天页面还没有文档上传入口和更完整的错误恢复体验。
+- 聊天页面还没有更完整的错误恢复体验。
 
 ### 生产部署
 
@@ -921,7 +924,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-前端文档上传 UI：接入 POST /documents 和 POST /documents/reindex
+生产部署第一步：backend Dockerfile
 ```
 
 原因：
@@ -934,7 +937,7 @@ OPENAI_API_KEY
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming 和最小聊天 UI 都已完成，下一步可以把文档上传和 reindex 接入 UI。
+- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI 和文档上传/reindex UI 都已完成，下一步进入生产部署基础：backend Dockerfile。
 
 启用 OpenAI embedding 后可以先跑：
 

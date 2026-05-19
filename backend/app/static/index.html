@@ -70,6 +70,80 @@
           <button id="send" type="submit">Send</button>
         </form>
       </section>
+
+      <aside class="knowledge-panel" aria-label="Knowledge base">
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow">Knowledge</p>
+            <h2>Documents</h2>
+          </div>
+          <button id="reload-documents" type="button">Reload</button>
+        </header>
+
+        <form id="document-form" class="document-form">
+          <label>
+            Source URI
+            <input
+              id="document-source-uri"
+              name="document-source-uri"
+              type="text"
+              autocomplete="off"
+              placeholder="uploads/notes.md"
+              required
+            />
+          </label>
+          <label>
+            Title
+            <input
+              id="document-title"
+              name="document-title"
+              type="text"
+              autocomplete="off"
+              placeholder="Optional title"
+            />
+          </label>
+          <label>
+            Markdown file
+            <input
+              id="document-file"
+              name="document-file"
+              type="file"
+              accept=".md,.markdown,.txt,text/markdown,text/plain"
+            />
+          </label>
+          <label>
+            Markdown
+            <textarea
+              id="document-markdown"
+              name="document-markdown"
+              rows="7"
+              placeholder="# Notes&#10;&#10;Paste Markdown here..."
+              required
+            ></textarea>
+          </label>
+          <button id="upload-document" type="submit">Upload</button>
+        </form>
+
+        <section class="reindex-panel" aria-label="Reindex documents">
+          <label>
+            Reindex source filter
+            <input
+              id="reindex-source-uri"
+              name="reindex-source-uri"
+              type="text"
+              autocomplete="off"
+              placeholder="Optional source_uri"
+            />
+          </label>
+          <div class="reindex-actions">
+            <button id="reindex-dry-run" type="button">Dry run</button>
+            <button id="reindex-write" type="button">Write</button>
+          </div>
+        </section>
+
+        <div id="document-status" class="document-status">Ready</div>
+        <div id="document-list" class="document-list" aria-live="polite"></div>
+      </aside>
     </main>
 
     <script src="/app/app.js" defer></script>

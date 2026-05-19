@@ -21,6 +21,8 @@ def test_static_app_serves_index_html() -> None:
     assert "text/html" in response.headers["content-type"]
     assert "Production RAG Assistant" in response.text
     assert 'id="chat-form"' in response.text
+    assert 'id="document-form"' in response.text
+    assert 'id="reindex-dry-run"' in response.text
 
 
 def test_static_app_serves_assets() -> None:
@@ -31,5 +33,8 @@ def test_static_app_serves_assets() -> None:
 
     assert script_response.status_code == 200
     assert "const state" in script_response.text
+    assert "uploadDocument" in script_response.text
+    assert "reindexDocuments" in script_response.text
     assert style_response.status_code == 200
     assert ".chat-panel" in style_response.text
+    assert ".knowledge-panel" in style_response.text
