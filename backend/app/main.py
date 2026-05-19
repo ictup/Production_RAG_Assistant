@@ -12,6 +12,7 @@ from backend.app.api import (
     routes_metrics,
 )
 from backend.app.core.config import Settings, get_settings
+from backend.app.core.cors import add_cors_middleware
 from backend.app.core.logging import RequestLoggingMiddleware, configure_logging
 from backend.app.core.request_id import RequestIDMiddleware
 from backend.app.observability.metrics import RequestMetricsMiddleware
@@ -31,6 +32,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(RequestMetricsMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
+    add_cors_middleware(app, settings)
 
     app.include_router(routes_health.router)
     app.include_router(routes_chat.router)

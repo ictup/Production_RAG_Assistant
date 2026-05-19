@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     openai_max_retries: int = 2
     openai_retry_delay_seconds: float = 0.25
     openai_max_output_tokens: int = 512
+    cors_allowed_origins: str = ""
+    cors_allowed_origin_regex: str | None = None
+    cors_allow_credentials: bool = False
     reranker_provider: Literal["none"] = "none"
     rerank_top_n: int = 5
     vector_top_k: int = 20

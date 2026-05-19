@@ -232,6 +232,16 @@ GENERATOR_PROVIDER=openai
 LLM_MODEL=gpt-5.4-nano
 ```
 
+跨域访问默认关闭。只有当 API 和前端不在同一个 origin 时，才需要显式配置 CORS。例如本地 Vite 前端或生产前端域名：
+
+```text
+CORS_ALLOWED_ORIGINS=http://localhost:5173,https://app.example.com
+CORS_ALLOWED_ORIGIN_REGEX=
+CORS_ALLOW_CREDENTIALS=false
+```
+
+默认 `CORS_ALLOW_CREDENTIALS=false`。当前 API 使用 `Authorization: Bearer ...`，通常不需要浏览器 cookie credential。
+
 ## 5. 本地启动流程
 
 ### 1. 启动数据库
@@ -625,7 +635,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-295 passed
+301 passed
 ```
 
 ### Pipeline Smoke
@@ -903,7 +913,7 @@ Repository -> Settings -> Actions -> General
 - `.dockerignore` 已完成，排除 `.env`、`.venv`、缓存和本地报告。
 - production docker-compose 已完成：`docker-compose.prod.yml`。
 - 部署说明。
-- CORS 策略。
+- CORS 策略已完成：默认关闭，通过 `CORS_ALLOWED_ORIGINS` 或 `CORS_ALLOWED_ORIGIN_REGEX` 显式开启。
 - rate limit。
 - 更完整的认证和权限模型。
 - secrets 管理。
@@ -984,9 +994,9 @@ OPENAI_API_KEY
 
 1. backend Dockerfile。已完成。
 2. production compose。已完成。
-3. 环境变量和 secrets 文档。
-4. rate limit。
-5. CORS。
+3. CORS。已完成。
+4. 环境变量和 secrets 文档。
+5. rate limit。
 6. dashboard 和 alert。
 
 ## 14. 当前优先级建议
@@ -994,7 +1004,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-生产化 API 边界：CORS 与 rate limit
+生产化 API 边界：rate limit
 ```
 
 原因：
@@ -1007,7 +1017,7 @@ OPENAI_API_KEY
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile 和 production compose 都已完成，下一步收紧 API 的跨域与请求速率边界。
+- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose 和 CORS 都已完成，下一步补 API 请求速率边界。
 
 启用 OpenAI embedding 后可以先跑：
 
