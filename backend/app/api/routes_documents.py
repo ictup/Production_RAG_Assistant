@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
@@ -10,18 +11,25 @@ from backend.app.db.repositories import DocumentRepository
 from backend.app.db.session import get_db_session
 from backend.app.rag.embedding_pipeline import embed_chunks
 from backend.app.rag.embeddings import EmbeddingClient, build_embedding_client
+from backend.app.rag.reindex_embeddings import (
+    ReindexEmbeddingsStats,
+    reindex_embeddings,
+)
 from backend.app.schemas.documents import (
     CreateDocumentRequest,
     CreateDocumentResponse,
     DeleteDocumentResponse,
     DocumentDetailResponse,
     DocumentsResponse,
+    ReindexDocumentsRequest,
+    ReindexDocumentsResponse,
 )
 from ingestion.chunking import chunk_document
 from ingestion.hashing import compute_content_hash
 from ingestion.parse_markdown import load_markdown_text
 
 router = APIRouter(tags=["documents"])
+ReindexRunner = Callable[..., Awaitable[ReindexEmbeddingsStats]]
 
 
 async def get_document_repository(
@@ -32,6 +40,10 @@ async def get_document_repository(
 
 async def get_embedding_client() -> EmbeddingClient:
     return build_embedding_client()
+
+
+async def get_reindex_runner() -> ReindexRunner:
+    return reindex_embeddings
 
 
 def normalize_workspace_id(workspace_id: str | None) -> str:
@@ -139,6 +151,31 @@ async def create_document(
         chunks_inserted=result.chunks_inserted,
         reason=result.reason,
     )
+
+
+@router.post("/documents/reindex", response_model=ReindexDocumentsResponse)
+async def reindex_documents(
+    request: ReindexDocumentsRequest,
+    _api_key: Annotated[str, Depends(require_api_key)],
+    runner: Annotated[ReindexRunner, Depends(get_reindex_runner)],
+    workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
+) -> ReindexDocumentsResponse:
+    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    try:
+        stats = await runner(
+            workspace_id=normalized_workspace_id,
+            source_uri=request.source_uri,
+            batch_size=request.batch_size,
+            limit=request.limit,
+            dry_run=request.dry_run,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+    return ReindexDocumentsResponse.from_stats(stats)
 
 
 @router.get("/documents/{document_id}", response_model=DocumentDetailResponse)

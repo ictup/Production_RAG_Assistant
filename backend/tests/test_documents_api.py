@@ -15,6 +15,7 @@ from backend.app.db.repositories import (
 )
 from backend.app.main import create_app
 from backend.app.rag.embeddings import FakeEmbeddingClient
+from backend.app.rag.reindex_embeddings import ReindexEmbeddingsStats
 from ingestion.models import Chunk, RawDocument
 
 AUTH_HEADERS = {"Authorization": "Bearer dev-key"}
@@ -28,6 +29,25 @@ class RecordingEmbeddingClient(FakeEmbeddingClient):
     async def embed_texts(self, texts):
         self.calls.append(list(texts))
         return await super().embed_texts(texts)
+
+
+class FakeReindexRunner:
+    def __init__(self, stats: ReindexEmbeddingsStats | None = None) -> None:
+        self.stats = stats or ReindexEmbeddingsStats(
+            workspace_id="public",
+            source_uri=None,
+            model_name="not-used-dry-run",
+            chunks_matched=0,
+            chunks_embedded=0,
+            chunks_updated=0,
+            dry_run=True,
+            elapsed_seconds=0.01,
+        )
+        self.calls: list[dict[str, object]] = []
+
+    async def __call__(self, **kwargs: object) -> ReindexEmbeddingsStats:
+        self.calls.append(dict(kwargs))
+        return self.stats
 
 
 class FakeDocumentRepository:
@@ -148,9 +168,11 @@ def make_document_detail_result() -> DocumentDetailResult:
 def build_client(
     fake_repository: FakeDocumentRepository,
     embedding_client: RecordingEmbeddingClient | None = None,
+    reindex_runner: FakeReindexRunner | None = None,
 ) -> TestClient:
     settings = Settings(api_keys="dev-key")
     embedding_client = embedding_client or RecordingEmbeddingClient()
+    reindex_runner = reindex_runner or FakeReindexRunner()
     app = create_app(settings)
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[routes_documents.get_document_repository] = (
@@ -158,6 +180,9 @@ def build_client(
     )
     app.dependency_overrides[routes_documents.get_embedding_client] = (
         lambda: embedding_client
+    )
+    app.dependency_overrides[routes_documents.get_reindex_runner] = (
+        lambda: reindex_runner
     )
     return TestClient(app)
 
@@ -357,6 +382,126 @@ def test_create_document_route_requires_api_key() -> None:
     assert fake_repository.ingest_calls == []
 
 
+def test_reindex_documents_route_runs_dry_run_by_default() -> None:
+    reindex_runner = FakeReindexRunner(
+        ReindexEmbeddingsStats(
+            workspace_id="tenant-a",
+            source_uri=None,
+            model_name="not-used-dry-run",
+            chunks_matched=3,
+            chunks_embedded=0,
+            chunks_updated=0,
+            dry_run=True,
+            elapsed_seconds=0.02,
+        )
+    )
+    client = build_client(FakeDocumentRepository(), reindex_runner=reindex_runner)
+
+    response = client.post(
+        "/documents/reindex",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "  tenant-a  ",
+        },
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert reindex_runner.calls == [
+        {
+            "workspace_id": "tenant-a",
+            "source_uri": None,
+            "batch_size": 32,
+            "limit": None,
+            "dry_run": True,
+        }
+    ]
+    assert response.json() == {
+        "workspace_id": "tenant-a",
+        "source_uri": None,
+        "model": "not-used-dry-run",
+        "chunks_matched": 3,
+        "chunks_embedded": 0,
+        "chunks_updated": 0,
+        "dry_run": True,
+        "elapsed_seconds": 0.02,
+    }
+
+
+def test_reindex_documents_route_passes_write_options() -> None:
+    reindex_runner = FakeReindexRunner(
+        ReindexEmbeddingsStats(
+            workspace_id="tenant-a",
+            source_uri="uploads/flashattention.md",
+            model_name="test-embedding",
+            chunks_matched=2,
+            chunks_embedded=2,
+            chunks_updated=2,
+            dry_run=False,
+            elapsed_seconds=1.25,
+        )
+    )
+    client = build_client(FakeDocumentRepository(), reindex_runner=reindex_runner)
+
+    response = client.post(
+        "/documents/reindex",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "tenant-a",
+        },
+        json={
+            "source_uri": " uploads/flashattention.md ",
+            "batch_size": 8,
+            "limit": 10,
+            "dry_run": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert reindex_runner.calls == [
+        {
+            "workspace_id": "tenant-a",
+            "source_uri": "uploads/flashattention.md",
+            "batch_size": 8,
+            "limit": 10,
+            "dry_run": False,
+        }
+    ]
+    assert response.json()["chunks_updated"] == 2
+    assert response.json()["dry_run"] is False
+
+
+def test_reindex_documents_route_requires_api_key() -> None:
+    reindex_runner = FakeReindexRunner()
+    client = build_client(FakeDocumentRepository(), reindex_runner=reindex_runner)
+
+    response = client.post("/documents/reindex", json={})
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "missing api key"}
+    assert reindex_runner.calls == []
+
+
+def test_reindex_documents_route_rejects_invalid_options() -> None:
+    reindex_runner = FakeReindexRunner()
+    client = build_client(FakeDocumentRepository(), reindex_runner=reindex_runner)
+
+    batch_response = client.post(
+        "/documents/reindex",
+        headers=AUTH_HEADERS,
+        json={"batch_size": 0},
+    )
+    limit_response = client.post(
+        "/documents/reindex",
+        headers=AUTH_HEADERS,
+        json={"limit": 0},
+    )
+
+    assert batch_response.status_code == 422
+    assert limit_response.status_code == 422
+    assert reindex_runner.calls == []
+
+
 def test_document_detail_route_returns_document_and_chunks() -> None:
     document_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
     fake_repository = FakeDocumentRepository(
@@ -496,4 +641,5 @@ def test_openapi_exposes_documents_route() -> None:
 
     assert response.status_code == 200
     assert "/documents" in response.json()["paths"]
+    assert "/documents/reindex" in response.json()["paths"]
     assert "/documents/{document_id}" in response.json()["paths"]

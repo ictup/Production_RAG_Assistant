@@ -9,6 +9,7 @@ from backend.app.db.repositories import (
     DocumentListResult,
     DocumentSummary,
 )
+from backend.app.rag.reindex_embeddings import ReindexEmbeddingsStats
 from ingestion.chunking import (
     DEFAULT_CHUNK_OVERLAP_TOKENS,
     DEFAULT_CHUNK_SIZE_TOKENS,
@@ -180,3 +181,45 @@ class DeleteDocumentResponse(BaseModel):
     workspace_id: str
     document_id: str
     deleted: bool
+
+
+class ReindexDocumentsRequest(BaseModel):
+    source_uri: str | None = Field(default=None, max_length=2048)
+    batch_size: int = Field(default=32, ge=1, le=256)
+    limit: int | None = Field(default=None, ge=1, le=10000)
+    dry_run: bool = True
+
+    @field_validator("source_uri")
+    @classmethod
+    def source_uri_must_be_trimmed(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class ReindexDocumentsResponse(BaseModel):
+    workspace_id: str
+    source_uri: str | None
+    model: str
+    chunks_matched: int = Field(ge=0)
+    chunks_embedded: int = Field(ge=0)
+    chunks_updated: int = Field(ge=0)
+    dry_run: bool
+    elapsed_seconds: float = Field(ge=0)
+
+    @classmethod
+    def from_stats(
+        cls,
+        stats: ReindexEmbeddingsStats,
+    ) -> "ReindexDocumentsResponse":
+        return cls(
+            workspace_id=stats.workspace_id,
+            source_uri=stats.source_uri,
+            model=stats.model_name,
+            chunks_matched=stats.chunks_matched,
+            chunks_embedded=stats.chunks_embedded,
+            chunks_updated=stats.chunks_updated,
+            dry_run=stats.dry_run,
+            elapsed_seconds=stats.elapsed_seconds,
+        )
