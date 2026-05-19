@@ -6,6 +6,7 @@ deterministic evals, and CI gate.
 Start here:
 
 - [Project handoff and quick start](docs/PROJECT_HANDOFF.md)
+- [Configuration and secrets guide](docs/CONFIGURATION.md)
 
 Local web UI after starting the API:
 

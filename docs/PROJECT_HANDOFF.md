@@ -22,6 +22,12 @@ Dockerfile
 docker-compose.prod.yml
 ```
 
+当前配置与 secrets 文档：
+
+```text
+docs/CONFIGURATION.md
+```
+
 ## 1. 当前项目状态
 
 这是一个生产风格的 RAG assistant 后端项目。当前阶段已经完成了可本地运行、可 ingest、可检索、可回答、可记录日志、可评测、可 CI 回归的后端 MVP。
@@ -171,6 +177,12 @@ data/raw/
 ```
 
 ## 4. 本地环境准备
+
+完整配置清单、运行模式和 secrets 规则见：
+
+```text
+docs/CONFIGURATION.md
+```
 
 ### 必需工具
 
@@ -647,7 +659,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-311 passed
+314 passed
 ```
 
 ### Pipeline Smoke
@@ -924,11 +936,12 @@ Repository -> Settings -> Actions -> General
 - backend Dockerfile 已完成：`Dockerfile`。
 - `.dockerignore` 已完成，排除 `.env`、`.venv`、缓存和本地报告。
 - production docker-compose 已完成：`docker-compose.prod.yml`。
+- 环境变量和 secrets 文档已完成：`docs/CONFIGURATION.md`。
 - 部署说明。
 - CORS 策略已完成：默认关闭，通过 `CORS_ALLOWED_ORIGINS` 或 `CORS_ALLOWED_ORIGIN_REGEX` 显式开启。
 - rate limit 已完成：默认关闭，通过 `RATE_LIMIT_ENABLED` 显式开启。
 - 更完整的认证和权限模型。
-- secrets 管理。
+- secrets 管理仍需接入真实部署平台或 secret manager。
 
 ### 可观测性
 
@@ -1008,7 +1021,7 @@ OPENAI_API_KEY
 2. production compose。已完成。
 3. CORS。已完成。
 4. rate limit。已完成。
-5. 环境变量和 secrets 文档。
+5. 环境变量和 secrets 文档。已完成。
 6. dashboard 和 alert。
 
 ## 14. 当前优先级建议
@@ -1016,7 +1029,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-生产化配置收口：环境变量和 secrets 文档
+生产部署 runbook
 ```
 
 原因：
@@ -1029,7 +1042,7 @@ OPENAI_API_KEY
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose、CORS 和基础 rate limit 都已完成，下一步系统整理环境变量、secrets 和生产配置说明。
+- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose、CORS、基础 rate limit 和配置/secrets 文档都已完成，下一步补从空机器启动、验证、日志、停服和恢复的部署 runbook。
 
 启用 OpenAI embedding 后可以先跑：
 
