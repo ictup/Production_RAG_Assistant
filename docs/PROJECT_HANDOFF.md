@@ -315,7 +315,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-209 passed
+212 passed
 ```
 
 ### Pipeline Smoke
@@ -334,6 +334,12 @@ uv run python -m backend.app.rag.pipeline_smoke --embedding-provider openai --ge
 
 ```powershell
 uv run python -m evals.run --format summary --fail-on-failure
+```
+
+真实 OpenAI eval，不修改 `.env`，临时覆盖 provider/model：
+
+```powershell
+uv run python -m evals.run --format summary --fail-on-failure --no-output --embedding-provider openai --generator-provider openai --llm-model gpt-5.4-nano
 ```
 
 当前 eval 基线：
@@ -426,6 +432,7 @@ make inspect-chat-logs  检查 chat_logs
 make inspect-evals      检查 eval 数据集格式
 make run-evals          运行 eval summary
 make eval-gate          eval 失败时返回非零退出码
+make eval-gate-openai   用 OpenAI embedding/generator 运行真实 eval gate
 make embedding-smoke    验证当前 embedding provider 能返回正确维度
 make generator-smoke    验证当前 generator provider 能返回非空答案
 make pipeline-smoke     端到端 pipeline smoke
@@ -604,7 +611,7 @@ Repository -> Settings -> Actions -> General
 1. 用真实 `OPENAI_API_KEY` 跑一轮 OpenAI embedding smoke。
 2. 对已有 chunk 执行 embedding reindex，确保库内向量和 query 向量来自同一 provider。
 3. 用 OpenAI generator 跑 pipeline smoke。
-4. 增加 OpenAI generator eval 模式和质量调优。
+4. 用 OpenAI generator 跑 eval gate。
 5. 增加 provider 超时、重试和错误分类测试。
 6. 增加 provider usage/token/cost 统计。
 
@@ -657,7 +664,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-增加 OpenAI generator eval 模式，并调优真实模型回答质量
+增加 provider 超时、重试和错误分类
 ```
 
 原因：
@@ -666,7 +673,8 @@ OPENAI_API_KEY
 - chunk embedding 已可用 reindex CLI 重建。
 - OpenAI generator 已可单独 smoke。
 - 真实端到端 pipeline smoke 已可通过 provider/model override 运行。
-- 下一步应把真实 generator 纳入 eval，观察 citation、关键词和 refusal 稳定性。
+- OpenAI generator 已可纳入 eval runner。
+- 下一步应强化 provider 失败时的错误分类、重试和用户可理解错误响应。
 
 启用 OpenAI embedding 后可以先跑：
 
@@ -692,7 +700,11 @@ uv run python -m backend.app.rag.generator_smoke --provider openai --model gpt-5
 uv run python -m backend.app.rag.pipeline_smoke --embedding-provider openai --generator-provider openai --llm-model gpt-5.4-nano
 ```
 
-接下来要把同样的 provider override 能力扩展到 eval runner，形成真实模型质量回归。
+真实 eval gate：
+
+```powershell
+uv run python -m evals.run --format summary --fail-on-failure --no-output --embedding-provider openai --generator-provider openai --llm-model gpt-5.4-nano
+```
 
 ## 15. 快速故障排查
 

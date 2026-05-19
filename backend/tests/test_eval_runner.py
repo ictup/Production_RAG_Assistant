@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 
+from backend.app.core.config import Settings
 from backend.app.rag.citations import Source
 from backend.app.rag.pipeline import (
     ChatPipelineResponse,
@@ -10,7 +11,12 @@ from backend.app.rag.pipeline import (
 )
 from backend.app.rag.refusal import REFUSAL_ANSWER, RefusalInfo
 from evals.models import EvalCase, EvalDataset, EvalSuite
-from evals.run import format_report_summary, serialize_report, write_report
+from evals.run import (
+    build_eval_settings,
+    format_report_summary,
+    serialize_report,
+    write_report,
+)
 from evals.runner import build_eval_report, run_eval_suite, score_eval_case
 
 
@@ -252,6 +258,47 @@ def test_report_formatters() -> None:
 
     assert '"total_cases": 1' in report_json
     assert "eval cases: 1/1 passed (100.0%)" in summary
+
+
+def test_build_eval_settings_applies_runtime_overrides() -> None:
+    settings = build_eval_settings(
+        Settings(
+            embedding_provider="fake",
+            generator_provider="fake",
+            llm_model="fake-llm",
+            openai_api_key="test-key",
+            openai_max_output_tokens=512,
+        ),
+        embedding_provider="openai",
+        generator_provider="openai",
+        llm_model="gpt-test",
+        openai_max_output_tokens=123,
+    )
+
+    assert settings.embedding_provider == "openai"
+    assert settings.generator_provider == "openai"
+    assert settings.llm_model == "gpt-test"
+    assert settings.openai_max_output_tokens == 123
+
+
+def test_build_eval_settings_keeps_base_settings_without_overrides() -> None:
+    base_settings = Settings(
+        embedding_provider="fake",
+        generator_provider="fake",
+        openai_api_key="test-key",
+    )
+
+    settings = build_eval_settings(base_settings)
+
+    assert settings is base_settings
+
+
+def test_build_eval_settings_rejects_invalid_output_limit() -> None:
+    with pytest.raises(ValueError, match="openai_max_output_tokens"):
+        build_eval_settings(
+            Settings(openai_api_key="test-key"),
+            openai_max_output_tokens=0,
+        )
 
 
 def test_write_report_creates_parent_directory(tmp_path) -> None:

@@ -1,4 +1,4 @@
-.PHONY: db-up db-down db-logs migrate ingest ingest-dry-run reindex-embeddings-dry-run reindex-embeddings inspect-ingestion inspect-chat-logs inspect-evals run-evals eval-gate embedding-smoke generator-smoke vector-smoke sparse-smoke hybrid-smoke rerank-smoke pipeline-smoke pipeline-smoke-openai
+.PHONY: db-up db-down db-logs migrate ingest ingest-dry-run reindex-embeddings-dry-run reindex-embeddings inspect-ingestion inspect-chat-logs inspect-evals run-evals eval-gate eval-gate-openai embedding-smoke generator-smoke vector-smoke sparse-smoke hybrid-smoke rerank-smoke pipeline-smoke pipeline-smoke-openai
 
 db-up:
 	docker compose up -d postgres
@@ -38,6 +38,9 @@ run-evals:
 
 eval-gate:
 	uv run python -m evals.run --format summary --fail-on-failure
+
+eval-gate-openai:
+	uv run python -m evals.run --format summary --fail-on-failure --no-output --embedding-provider openai --generator-provider openai --llm-model gpt-5.4-nano
 
 embedding-smoke:
 	uv run python -m backend.app.rag.embedding_smoke --expected-dimension 1536

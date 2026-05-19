@@ -2,7 +2,9 @@ import argparse
 import asyncio
 import json
 from pathlib import Path
+from typing import Literal
 
+from backend.app.core.config import Settings, get_settings
 from backend.app.db.session import get_sessionmaker
 from backend.app.rag.pipeline import ChatPipelineRequest, RagPipeline
 from evals.loaders import load_default_eval_suite
@@ -10,6 +12,7 @@ from evals.models import EvalCase
 from evals.runner import EvalRunReport, run_eval_suite
 
 DEFAULT_REPORT_OUTPUT = Path("evals/reports/latest.json")
+ProviderName = Literal["fake", "openai"]
 
 
 def serialize_report(report: EvalRunReport) -> str:
@@ -40,6 +43,32 @@ def format_report_summary(report: EvalRunReport) -> str:
     return "\n".join(lines)
 
 
+def build_eval_settings(
+    settings: Settings | None = None,
+    *,
+    embedding_provider: ProviderName | None = None,
+    generator_provider: ProviderName | None = None,
+    llm_model: str | None = None,
+    openai_max_output_tokens: int | None = None,
+) -> Settings:
+    settings = settings or get_settings()
+    updates = {}
+    if embedding_provider is not None:
+        updates["embedding_provider"] = embedding_provider
+    if generator_provider is not None:
+        updates["generator_provider"] = generator_provider
+    if llm_model is not None:
+        updates["llm_model"] = llm_model
+    if openai_max_output_tokens is not None:
+        if openai_max_output_tokens <= 0:
+            raise ValueError("openai_max_output_tokens must be greater than zero")
+        updates["openai_max_output_tokens"] = openai_max_output_tokens
+
+    if not updates:
+        return settings
+    return Settings(**{**settings.model_dump(), **updates})
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run deterministic RAG evals.")
     parser.add_argument("--datasets-dir", type=Path, default=Path("evals/datasets"))
@@ -49,6 +78,29 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fused-top-k", type=int, default=5)
     parser.add_argument("--rerank-top-n", type=int, default=2)
     parser.add_argument("--no-rerank", action="store_true")
+    parser.add_argument(
+        "--embedding-provider",
+        choices=["fake", "openai"],
+        default=None,
+        help="Override EMBEDDING_PROVIDER for this eval run.",
+    )
+    parser.add_argument(
+        "--generator-provider",
+        choices=["fake", "openai"],
+        default=None,
+        help="Override GENERATOR_PROVIDER for this eval run.",
+    )
+    parser.add_argument(
+        "--llm-model",
+        default=None,
+        help="Override LLM_MODEL for this eval run.",
+    )
+    parser.add_argument(
+        "--openai-max-output-tokens",
+        type=int,
+        default=None,
+        help="Override OPENAI_MAX_OUTPUT_TOKENS for this eval run.",
+    )
     parser.add_argument(
         "--format",
         choices=("json", "summary"),
@@ -78,9 +130,15 @@ async def async_main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     suite = load_default_eval_suite(args.datasets_dir)
     sessionmaker = get_sessionmaker()
+    settings = build_eval_settings(
+        embedding_provider=args.embedding_provider,
+        generator_provider=args.generator_provider,
+        llm_model=args.llm_model,
+        openai_max_output_tokens=args.openai_max_output_tokens,
+    )
 
     async with sessionmaker() as session:
-        pipeline = RagPipeline(session=session)
+        pipeline = RagPipeline(session=session, settings=settings)
 
         async def answer_case(eval_case: EvalCase):
             return await pipeline.answer_question(
