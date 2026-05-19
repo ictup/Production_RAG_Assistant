@@ -194,6 +194,9 @@ EMBEDDING_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_TIMEOUT_SECONDS=30
+OPENAI_MAX_RETRIES=2
+OPENAI_RETRY_DELAY_SECONDS=0.25
 OPENAI_MAX_OUTPUT_TOKENS=512
 EMBEDDING_DIMENSION=1536
 ```
@@ -315,7 +318,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-212 passed
+214 passed
 ```
 
 ### Pipeline Smoke
@@ -543,9 +546,9 @@ Repository -> Settings -> Actions -> General
 
 - OpenAI embedding provider 已有代码、mock 测试和联网 smoke CLI。
 - OpenAI generator provider 已有代码和 smoke CLI。
-- provider 超时、重试、错误分类。
+- OpenAI provider 超时、有限重试和错误分类。
 - provider API key 配置校验目前覆盖 OpenAI embedding 和 OpenAI generator。
-- provider usage/token/cost 统计。
+- provider cost 统计和更细粒度 metrics。
 
 ### 检索质量
 
@@ -612,8 +615,8 @@ Repository -> Settings -> Actions -> General
 2. 对已有 chunk 执行 embedding reindex，确保库内向量和 query 向量来自同一 provider。
 3. 用 OpenAI generator 跑 pipeline smoke。
 4. 用 OpenAI generator 跑 eval gate。
-5. 增加 provider 超时、重试和错误分类测试。
-6. 增加 provider usage/token/cost 统计。
+5. 增加 provider 超时、重试和错误分类。
+6. 增加 provider API 错误响应、metrics 和 cost 统计。
 
 需要你提供：
 
@@ -664,7 +667,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-增加 provider 超时、重试和错误分类
+增加 provider API 错误响应和 metrics
 ```
 
 原因：
@@ -674,7 +677,8 @@ OPENAI_API_KEY
 - OpenAI generator 已可单独 smoke。
 - 真实端到端 pipeline smoke 已可通过 provider/model override 运行。
 - OpenAI generator 已可纳入 eval runner。
-- 下一步应强化 provider 失败时的错误分类、重试和用户可理解错误响应。
+- OpenAI provider 已有超时、有限重试和错误分类。
+- 下一步应把 provider 错误映射到 API 响应、日志和 metrics，方便排查线上失败。
 
 启用 OpenAI embedding 后可以先跑：
 

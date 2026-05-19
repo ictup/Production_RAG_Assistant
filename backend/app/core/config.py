@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     openai_embedding_model: str = "text-embedding-3-small"
     openai_timeout_seconds: float = 30.0
+    openai_max_retries: int = 2
+    openai_retry_delay_seconds: float = 0.25
     openai_max_output_tokens: int = 512
     reranker_provider: Literal["none"] = "none"
     rerank_top_n: int = 5

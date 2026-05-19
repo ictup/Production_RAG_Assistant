@@ -6,6 +6,7 @@ from typing import Protocol, runtime_checkable
 import httpx
 
 from backend.app.core.config import Settings, get_settings
+from backend.app.rag.openai_provider import OpenAIProviderError, post_with_retries
 
 OPENAI_EMBEDDINGS_PATH = "/embeddings"
 
@@ -14,7 +15,7 @@ class EmbeddingDimensionError(ValueError):
     pass
 
 
-class OpenAIEmbeddingError(RuntimeError):
+class OpenAIEmbeddingError(OpenAIProviderError):
     pass
 
 
@@ -115,6 +116,8 @@ class OpenAIEmbeddingClient:
         dimension: int = 1536,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 30.0,
+        max_retries: int = 2,
+        retry_delay_seconds: float = 0.25,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         api_key = api_key.strip()
@@ -124,12 +127,18 @@ class OpenAIEmbeddingClient:
             raise ValueError("dimension must be greater than zero")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be greater than zero")
+        if max_retries < 0:
+            raise ValueError("max_retries must not be negative")
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds must not be negative")
 
         self.api_key = api_key
         self.model_name = model_name
         self.dimension = dimension
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.max_retries = max_retries
+        self.retry_delay_seconds = retry_delay_seconds
         self.http_client = http_client
 
     async def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
@@ -163,8 +172,8 @@ class OpenAIEmbeddingClient:
         client: httpx.AsyncClient,
         payload: dict,
     ) -> dict:
-        try:
-            response = await client.post(
+        async def call() -> httpx.Response:
+            return await client.post(
                 f"{self.base_url}{OPENAI_EMBEDDINGS_PATH}",
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
@@ -172,16 +181,14 @@ class OpenAIEmbeddingClient:
                 },
                 json=payload,
             )
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise OpenAIEmbeddingError(
-                "OpenAI embeddings request failed with "
-                f"status {exc.response.status_code}: {exc.response.text}"
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise OpenAIEmbeddingError(
-                f"OpenAI embeddings request failed: {exc}"
-            ) from exc
+
+        response = await post_with_retries(
+            operation="OpenAI embeddings request",
+            call=call,
+            max_retries=self.max_retries,
+            retry_delay_seconds=self.retry_delay_seconds,
+            error_cls=OpenAIEmbeddingError,
+        )
 
         try:
             response_data = response.json()
@@ -249,6 +256,8 @@ def build_embedding_client(settings: Settings | None = None) -> EmbeddingClient:
             dimension=settings.embedding_dimension,
             base_url=settings.openai_base_url,
             timeout_seconds=settings.openai_timeout_seconds,
+            max_retries=settings.openai_max_retries,
+            retry_delay_seconds=settings.openai_retry_delay_seconds,
         )
 
     raise ValueError(f"unsupported embedding provider: {settings.embedding_provider}")

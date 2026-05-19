@@ -103,7 +103,10 @@ async def test_openai_embedding_client_sends_expected_request() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_embedding_client_rejects_http_errors() -> None:
+    requests: list[httpx.Request] = []
+
     def handler(_: httpx.Request) -> httpx.Response:
+        requests.append(_)
         return httpx.Response(401, text="invalid api key")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -114,8 +117,42 @@ async def test_openai_embedding_client_rejects_http_errors() -> None:
             http_client=client,
         )
 
-        with pytest.raises(OpenAIEmbeddingError, match="status 401"):
+        with pytest.raises(OpenAIEmbeddingError, match="status 401") as exc_info:
             await embedding_client.embed_query("FlashAttention")
+
+    assert exc_info.value.category == "authentication"
+    assert exc_info.value.retryable is False
+    assert exc_info.value.status_code == 401
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_openai_embedding_client_retries_transient_errors() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(500, text="temporary server error")
+        return httpx.Response(
+            200,
+            json={"data": [{"index": 0, "embedding": [0.1, 0.2, 0.3]}]},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        embedding_client = OpenAIEmbeddingClient(
+            api_key="test-key",
+            dimension=3,
+            base_url="https://api.openai.test/v1",
+            max_retries=1,
+            retry_delay_seconds=0,
+            http_client=client,
+        )
+
+        embedding = await embedding_client.embed_query("FlashAttention")
+
+    assert embedding == [0.1, 0.2, 0.3]
+    assert len(requests) == 2
 
 
 @pytest.mark.asyncio
@@ -205,12 +242,17 @@ def test_build_embedding_client_uses_openai_settings() -> None:
             openai_api_key="test-key",
             openai_base_url="https://api.openai.test/v1",
             openai_embedding_model="text-embedding-3-small",
+            openai_max_retries=3,
+            openai_retry_delay_seconds=0,
         )
     )
 
     assert isinstance(client, EmbeddingClient)
     assert client.model_name == "text-embedding-3-small"
     assert client.dimension == 1536
+    assert isinstance(client, OpenAIEmbeddingClient)
+    assert client.max_retries == 3
+    assert client.retry_delay_seconds == 0
 
 
 def json_from_request(request: httpx.Request) -> dict:

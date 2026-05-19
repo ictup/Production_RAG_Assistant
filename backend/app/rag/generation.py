@@ -5,6 +5,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from backend.app.core.config import Settings, get_settings
+from backend.app.rag.openai_provider import OpenAIProviderError, post_with_retries
 from ingestion.chunking import count_tokens
 
 OPENAI_RESPONSES_PATH = "/responses"
@@ -37,7 +38,7 @@ OPENAI_RAG_INSTRUCTIONS = (
 )
 
 
-class OpenAIGenerationError(RuntimeError):
+class OpenAIGenerationError(OpenAIProviderError):
     pass
 
 
@@ -90,6 +91,8 @@ class OpenAIResponsesGenerator:
         model_name: str,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 30.0,
+        max_retries: int = 2,
+        retry_delay_seconds: float = 0.25,
         max_output_tokens: int = 512,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
@@ -100,6 +103,10 @@ class OpenAIResponsesGenerator:
             raise ValueError("model_name must not be blank")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be greater than zero")
+        if max_retries < 0:
+            raise ValueError("max_retries must not be negative")
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds must not be negative")
         if max_output_tokens <= 0:
             raise ValueError("max_output_tokens must be greater than zero")
 
@@ -107,6 +114,8 @@ class OpenAIResponsesGenerator:
         self.model_name = model_name.strip()
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.max_retries = max_retries
+        self.retry_delay_seconds = retry_delay_seconds
         self.max_output_tokens = max_output_tokens
         self.http_client = http_client
 
@@ -145,8 +154,8 @@ class OpenAIResponsesGenerator:
         client: httpx.AsyncClient,
         payload: dict,
     ) -> dict:
-        try:
-            response = await client.post(
+        async def call() -> httpx.Response:
+            return await client.post(
                 f"{self.base_url}{OPENAI_RESPONSES_PATH}",
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
@@ -154,16 +163,14 @@ class OpenAIResponsesGenerator:
                 },
                 json=payload,
             )
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise OpenAIGenerationError(
-                "OpenAI response request failed with "
-                f"status {exc.response.status_code}: {exc.response.text}"
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise OpenAIGenerationError(
-                f"OpenAI response request failed: {exc}"
-            ) from exc
+
+        response = await post_with_retries(
+            operation="OpenAI response request",
+            call=call,
+            max_retries=self.max_retries,
+            retry_delay_seconds=self.retry_delay_seconds,
+            error_cls=OpenAIGenerationError,
+        )
 
         try:
             response_data = response.json()
@@ -342,6 +349,8 @@ def build_generator(settings: Settings | None = None) -> Generator:
             model_name=settings.llm_model,
             base_url=settings.openai_base_url,
             timeout_seconds=settings.openai_timeout_seconds,
+            max_retries=settings.openai_max_retries,
+            retry_delay_seconds=settings.openai_retry_delay_seconds,
             max_output_tokens=settings.openai_max_output_tokens,
         )
 

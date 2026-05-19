@@ -150,19 +150,61 @@ async def test_openai_responses_generator_sends_expected_request() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_responses_generator_rejects_http_errors() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(429, text="rate limited")
+
     async with httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            lambda _request: httpx.Response(429, text="rate limited")
-        )
+        transport=httpx.MockTransport(handler)
     ) as http_client:
         generator = OpenAIResponsesGenerator(
             api_key="test-key",
             model_name="gpt-test",
+            max_retries=0,
             http_client=http_client,
         )
 
-        with pytest.raises(OpenAIGenerationError, match="status 429"):
+        with pytest.raises(OpenAIGenerationError, match="status 429") as exc_info:
             await generator.generate("Context: FlashAttention\n\nQuestion: Why?")
+
+    assert exc_info.value.category == "rate_limit"
+    assert exc_info.value.retryable is True
+    assert exc_info.value.status_code == 429
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_generator_retries_rate_limits() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(429, text="rate limited")
+        return httpx.Response(
+            200,
+            json={"output_text": "FlashAttention reduces memory traffic. [1]"},
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        generator = OpenAIResponsesGenerator(
+            api_key="test-key",
+            model_name="gpt-test",
+            max_retries=1,
+            retry_delay_seconds=0,
+            http_client=http_client,
+        )
+
+        generated = await generator.generate(
+            "Context: FlashAttention\n\nQuestion: Why?"
+        )
+
+    assert generated.answer == "FlashAttention reduces memory traffic. [1]"
+    assert len(requests) == 2
 
 
 def test_extract_openai_response_text_prefers_output_text_property() -> None:
@@ -306,12 +348,16 @@ def test_build_generator_uses_openai_settings() -> None:
             openai_api_key="test-key",
             openai_base_url="https://api.openai.test/v1",
             openai_timeout_seconds=3,
+            openai_max_retries=4,
+            openai_retry_delay_seconds=0,
             openai_max_output_tokens=123,
         )
     )
 
     assert isinstance(generator, OpenAIResponsesGenerator)
     assert generator.model_name == "gpt-test"
+    assert generator.max_retries == 4
+    assert generator.retry_delay_seconds == 0
     assert generator.max_output_tokens == 123
 
 
