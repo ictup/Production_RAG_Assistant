@@ -14,6 +14,13 @@ D:\Learning-2026\RAG-2026
 https://github.com/ictup/Production_RAG_Assistant.git
 ```
 
+当前容器化入口：
+
+```text
+Dockerfile
+.dockerignore
+```
+
 ## 1. 当前项目状态
 
 这是一个生产风格的 RAG assistant 后端项目。当前阶段已经完成了可本地运行、可 ingest、可检索、可回答、可记录日志、可评测、可 CI 回归的后端 MVP。
@@ -273,6 +280,22 @@ http://127.0.0.1:8000
 ```text
 http://127.0.0.1:8000/app/
 ```
+
+### 6. 构建并运行后端镜像
+
+构建 API 镜像：
+
+```powershell
+docker build -t production-rag-assistant:local .
+```
+
+运行 API 容器：
+
+```powershell
+docker run --rm --env-file .env -p 8000:8000 production-rag-assistant:local
+```
+
+注意：如果容器需要连接宿主机上的 Postgres，`.env` 里的数据库 host 不能写 `localhost`，需要改成 `host.docker.internal`。下一步 production compose 会把 API 和 Postgres 放到同一个 Docker network 中，届时可以使用服务名连接。
 
 ## 6. API 快速验证
 
@@ -561,7 +584,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-288 passed
+291 passed
 ```
 
 ### Pipeline Smoke
@@ -830,7 +853,8 @@ Repository -> Settings -> Actions -> General
 
 ### 生产部署
 
-- backend Dockerfile。
+- backend Dockerfile 已完成：`Dockerfile`。
+- `.dockerignore` 已完成，排除 `.env`、`.venv`、缓存和本地报告。
 - production docker-compose。
 - 部署说明。
 - CORS 策略。
@@ -924,7 +948,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-生产部署第一步：backend Dockerfile
+生产部署第二步：production docker-compose
 ```
 
 原因：
@@ -937,7 +961,7 @@ OPENAI_API_KEY
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI 和文档上传/reindex UI 都已完成，下一步进入生产部署基础：backend Dockerfile。
+- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI 和 backend Dockerfile 都已完成，下一步补 production docker-compose。
 
 启用 OpenAI embedding 后可以先跑：
 
