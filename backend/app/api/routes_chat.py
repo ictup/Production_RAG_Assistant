@@ -1,13 +1,18 @@
 import logging
+import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.security import require_api_key
 from backend.app.core.logging import serialize_log_payload
 from backend.app.core.request_id import get_request_id
-from backend.app.db.repositories import ChatLogRepository, CreateChatLogInput
+from backend.app.db.repositories import (
+    ChatLogRepository,
+    ChatSessionRepository,
+    CreateChatLogInput,
+)
 from backend.app.db.session import get_db_session
 from backend.app.observability.metrics import metrics_registry
 from backend.app.rag.openai_provider import OpenAIProviderError
@@ -41,6 +46,12 @@ async def get_chat_log_repository(
     return ChatLogRepository(session=session)
 
 
+async def get_chat_session_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ChatSessionRepository:
+    return ChatSessionRepository(session=session)
+
+
 def normalize_workspace_id(workspace_id: str | None) -> str:
     if workspace_id is None:
         return "public"
@@ -53,6 +64,7 @@ def build_chat_log_input(
     *,
     request_id: str,
     workspace_id: str,
+    session_id: uuid.UUID | None,
     request: ChatRequest,
     response: ChatPipelineResponse,
 ) -> CreateChatLogInput:
@@ -71,7 +83,29 @@ def build_chat_log_input(
         ),
         citation_valid=response.citation_valid,
         latency_ms=response.usage.latency_ms,
+        session_id=session_id,
     )
+
+
+async def resolve_chat_session_id(
+    *,
+    session_id: uuid.UUID | None,
+    workspace_id: str,
+    repository: ChatSessionRepository,
+) -> uuid.UUID | None:
+    if session_id is None:
+        return None
+
+    chat_session = await repository.get_session(
+        session_id=session_id,
+        workspace_id=workspace_id,
+    )
+    if chat_session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="chat session not found",
+        )
+    return session_id
 
 
 def map_provider_error_status(error: OpenAIProviderError) -> int:
@@ -156,10 +190,19 @@ async def chat(
         ChatLogRepository,
         Depends(get_chat_log_repository),
     ],
+    chat_session_repository: Annotated[
+        ChatSessionRepository,
+        Depends(get_chat_session_repository),
+    ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> ChatResponse:
     request_id = get_request_id(http_request)
     normalized_workspace_id = normalize_workspace_id(workspace_id)
+    session_id = await resolve_chat_session_id(
+        session_id=request.session_id,
+        workspace_id=normalized_workspace_id,
+        repository=chat_session_repository,
+    )
     try:
         response = await pipeline.answer_question(
             request.to_pipeline_request(
@@ -191,6 +234,7 @@ async def chat(
         build_chat_log_input(
             request_id=request_id,
             workspace_id=normalized_workspace_id,
+            session_id=session_id,
             request=request,
             response=response,
         ),
@@ -199,6 +243,7 @@ async def chat(
     return ChatResponse.from_pipeline_response(
         response,
         request_id=request_id,
+        session_id=session_id,
     )
 
 

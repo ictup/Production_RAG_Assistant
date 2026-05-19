@@ -131,7 +131,10 @@ def make_embedding(dimension: int = 1536) -> list[float]:
     return [0.0] * (dimension - 1) + [1.0]
 
 
-def make_chat_log_input() -> CreateChatLogInput:
+def make_chat_log_input(
+    *,
+    session_id: uuid.UUID | None = None,
+) -> CreateChatLogInput:
     return CreateChatLogInput(
         request_id=" request-1 ",
         workspace_id=" public ",
@@ -143,6 +146,7 @@ def make_chat_log_input() -> CreateChatLogInput:
         refusal=None,
         citation_valid=True,
         latency_ms=12,
+        session_id=session_id,
     )
 
 
@@ -431,6 +435,7 @@ async def test_create_chat_log_adds_chat_log_model() -> None:
     assert isinstance(chat_log, ChatLog)
     assert chat_log.request_id == "request-1"
     assert chat_log.workspace_id == "public"
+    assert chat_log.session_id is None
     assert chat_log.question == "What problem does FlashAttention solve?"
     assert chat_log.answer == "FlashAttention reduces memory traffic. [1]"
     assert chat_log.sources == [{"source_id": "1", "title": "FlashAttention Notes"}]
@@ -442,6 +447,19 @@ async def test_create_chat_log_adds_chat_log_model() -> None:
     assert session.added == [chat_log]
     assert session.flushed is True
     assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_create_chat_log_can_attach_session_id() -> None:
+    session = FakeAsyncSession()
+    repository = ChatLogRepository(session)  # type: ignore[arg-type]
+    session_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+
+    chat_log = await repository.create_chat_log(
+        make_chat_log_input(session_id=session_id)
+    )
+
+    assert chat_log.session_id == session_id
 
 
 @pytest.mark.asyncio

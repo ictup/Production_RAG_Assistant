@@ -40,6 +40,7 @@ class CreateChatLogInput:
     refusal: dict[str, Any] | None
     citation_valid: bool | None
     latency_ms: int
+    session_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -364,6 +365,7 @@ class ChatLogRepository:
             id=uuid.uuid4(),
             request_id=request_id,
             workspace_id=workspace_id,
+            session_id=log_input.session_id,
             question=question,
             answer=log_input.answer,
             sources=list(log_input.sources),

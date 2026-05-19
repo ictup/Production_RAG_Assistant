@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -16,6 +17,7 @@ from backend.app.rag.refusal import RefusalInfo
 
 class ChatRequest(BaseModel):
     question: str
+    session_id: uuid.UUID | None = None
     vector_top_k: int | None = Field(default=None, gt=0)
     sparse_top_k: int | None = Field(default=None, gt=0)
     fused_top_k: int | None = Field(default=None, gt=0)
@@ -48,6 +50,7 @@ class ChatResponse(BaseModel):
     retrieval: RetrievalInfo
     usage: UsageInfo
     request_id: str
+    session_id: str | None = None
     citation_valid: bool | None
     refusal: RefusalInfo | None = None
 
@@ -57,6 +60,7 @@ class ChatResponse(BaseModel):
         response: ChatPipelineResponse,
         *,
         request_id: str,
+        session_id: uuid.UUID | None = None,
     ) -> "ChatResponse":
         return cls(
             answer=response.answer,
@@ -64,6 +68,7 @@ class ChatResponse(BaseModel):
             retrieval=response.retrieval,
             usage=response.usage,
             request_id=request_id,
+            session_id=str(session_id) if session_id is not None else None,
             citation_valid=response.citation_valid,
             refusal=response.refusal,
         )
@@ -73,6 +78,7 @@ class ChatLogItem(BaseModel):
     id: str
     request_id: str
     workspace_id: str
+    session_id: str | None
     question: str
     answer: str
     sources: list[dict[str, Any]]
@@ -89,6 +95,9 @@ class ChatLogItem(BaseModel):
             id=str(chat_log.id),
             request_id=chat_log.request_id,
             workspace_id=chat_log.workspace_id,
+            session_id=(
+                str(chat_log.session_id) if chat_log.session_id is not None else None
+            ),
             question=chat_log.question,
             answer=chat_log.answer,
             sources=list(chat_log.sources),

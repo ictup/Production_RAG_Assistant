@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.api import routes_chat
 from backend.app.core.config import Settings, get_settings
-from backend.app.db.models import ChatLog
+from backend.app.db.models import ChatLog, ChatSession
 from backend.app.db.repositories import CreateChatLogInput
 from backend.app.main import create_app
 from backend.app.observability.metrics import metrics_registry
@@ -102,6 +102,24 @@ class FakeChatLogRepository:
         return self.recent_logs
 
 
+class FakeChatSessionRepository:
+    def __init__(self, sessions: list[ChatSession] | None = None) -> None:
+        self.sessions = {
+            (chat_session.id, chat_session.workspace_id): chat_session
+            for chat_session in sessions or []
+        }
+        self.get_calls: list[tuple[uuid.UUID, str]] = []
+
+    async def get_session(
+        self,
+        *,
+        session_id: uuid.UUID,
+        workspace_id: str = "public",
+    ) -> ChatSession | None:
+        self.get_calls.append((session_id, workspace_id))
+        return self.sessions.get((session_id, workspace_id))
+
+
 def make_source() -> Source:
     return Source(
         source_id="1",
@@ -130,6 +148,17 @@ def make_chat_log_model() -> ChatLog:
     )
 
 
+def make_chat_session_model() -> ChatSession:
+    return ChatSession(
+        id=uuid.UUID("33333333-3333-3333-3333-333333333333"),
+        workspace_id="tenant-a",
+        title="GPU systems questions",
+        metadata_={"topic": "systems"},
+        created_at=datetime(2026, 5, 18, 8, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 18, 9, 0, tzinfo=UTC),
+    )
+
+
 def make_provider_error(
     *,
     category: str = "rate_limit",
@@ -150,14 +179,21 @@ def make_provider_error(
 def build_client(
     fake_pipeline: FakePipeline,
     fake_chat_log_repository: FakeChatLogRepository | None = None,
+    fake_chat_session_repository: FakeChatSessionRepository | None = None,
 ) -> TestClient:
     fake_chat_log_repository = fake_chat_log_repository or FakeChatLogRepository()
+    fake_chat_session_repository = (
+        fake_chat_session_repository or FakeChatSessionRepository()
+    )
     settings = Settings(api_keys="dev-key")
     app = create_app(settings)
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[routes_chat.get_rag_pipeline] = lambda: fake_pipeline
     app.dependency_overrides[routes_chat.get_chat_log_repository] = (
         lambda: fake_chat_log_repository
+    )
+    app.dependency_overrides[routes_chat.get_chat_session_repository] = (
+        lambda: fake_chat_session_repository
     )
     return TestClient(app)
 
@@ -190,6 +226,7 @@ def test_chat_route_returns_answer_sources_and_metadata() -> None:
     assert body["retrieval"]["mode"] == "hybrid_rrf_rerank"
     assert body["usage"]["model"] == "test-fake-llm"
     assert body["request_id"] == response.headers["X-Request-ID"]
+    assert body["session_id"] is None
     assert body["citation_valid"] is True
 
     assert len(fake_pipeline.requests) == 1
@@ -207,6 +244,7 @@ def test_chat_route_returns_answer_sources_and_metadata() -> None:
     chat_log_input = fake_chat_log_repository.inputs[0]
     assert chat_log_input.request_id == body["request_id"]
     assert chat_log_input.workspace_id == "tenant-a"
+    assert chat_log_input.session_id is None
     assert chat_log_input.question == "What problem does FlashAttention solve?"
     assert chat_log_input.answer == body["answer"]
     assert chat_log_input.sources == body["sources"]
@@ -215,6 +253,68 @@ def test_chat_route_returns_answer_sources_and_metadata() -> None:
     assert chat_log_input.refusal is None
     assert chat_log_input.citation_valid is True
     assert chat_log_input.latency_ms == body["usage"]["latency_ms"]
+
+
+def test_chat_route_attaches_log_to_existing_session() -> None:
+    chat_session = make_chat_session_model()
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository()
+    fake_chat_session_repository = FakeChatSessionRepository(sessions=[chat_session])
+    client = build_client(
+        fake_pipeline,
+        fake_chat_log_repository,
+        fake_chat_session_repository,
+    )
+
+    response = client.post(
+        "/chat",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "  tenant-a  ",
+        },
+        json={
+            "question": "What problem does FlashAttention solve?",
+            "session_id": str(chat_session.id),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["session_id"] == str(chat_session.id)
+    assert fake_chat_session_repository.get_calls == [(chat_session.id, "tenant-a")]
+    assert len(fake_pipeline.requests) == 1
+    assert len(fake_chat_log_repository.inputs) == 1
+    assert fake_chat_log_repository.inputs[0].session_id == chat_session.id
+
+
+def test_chat_route_rejects_missing_session_before_pipeline_call() -> None:
+    session_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository()
+    fake_chat_session_repository = FakeChatSessionRepository()
+    client = build_client(
+        fake_pipeline,
+        fake_chat_log_repository,
+        fake_chat_session_repository,
+    )
+
+    response = client.post(
+        "/chat",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "tenant-a",
+        },
+        json={
+            "question": "What problem does FlashAttention solve?",
+            "session_id": str(session_id),
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "chat session not found"}
+    assert fake_chat_session_repository.get_calls == [(session_id, "tenant-a")]
+    assert fake_pipeline.requests == []
+    assert fake_chat_log_repository.inputs == []
 
 
 def test_chat_route_defaults_workspace_to_public() -> None:
@@ -470,6 +570,7 @@ def test_chat_logs_route_returns_recent_logs_for_workspace() -> None:
     assert body["count"] == 1
     assert body["logs"][0]["id"] == "11111111-1111-1111-1111-111111111111"
     assert body["logs"][0]["request_id"] == "request-1"
+    assert body["logs"][0]["session_id"] is None
     assert body["logs"][0]["question"] == "What problem does FlashAttention solve?"
     assert body["logs"][0]["citation_valid"] is True
     assert body["logs"][0]["sources"][0]["source_id"] == "1"

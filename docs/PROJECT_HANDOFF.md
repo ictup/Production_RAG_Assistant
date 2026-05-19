@@ -26,7 +26,7 @@ https://github.com/ictup/Production_RAG_Assistant.git
 
 - FastAPI 应用入口：`backend/app/main.py`
 - 健康检查接口：`GET /health`
-- RAG 聊天接口：`POST /chat`
+- RAG 聊天接口：`POST /chat`，支持可选 `session_id`
 - 聊天日志查询接口：`GET /chat/logs`
 - chat session 创建接口：`POST /chat/sessions`
 - chat session 列表接口：`GET /chat/sessions`
@@ -296,6 +296,19 @@ curl.exe -X POST http://127.0.0.1:8000/chat `
 - `usage`
 - `citation_valid`
 - `request_id`
+- `session_id`
+
+如果要把本次问答挂到某个 chat session，先创建 session，再把返回的 `session.id` 放到 `/chat` 请求体：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/chat `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -H "X-Workspace-ID: public" `
+  -d "{\"question\":\"What problem does FlashAttention solve?\",\"session_id\":\"<session_id>\"}"
+```
+
+如果 `session_id` 不存在，或者不属于当前 `X-Workspace-ID`，接口会返回 `404`，并且不会调用 RAG pipeline，也不会写入 chat log。
 
 如果 OpenAI provider 失败，响应会包含结构化错误：
 
@@ -480,7 +493,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-269 passed
+272 passed
 ```
 
 ### Pipeline Smoke
@@ -733,7 +746,8 @@ Repository -> Settings -> Actions -> General
 - chat session 表和 `chat_logs.session_id` 迁移已完成。
 - chat session repository 和基础 API 已完成：`POST /chat/sessions`、`GET /chat/sessions`、`GET /chat/sessions/{session_id}`。
 - workspace 管理 API。
-- `/chat` 还没有挂载 session，也还没有 conversation history API。
+- `/chat` 已支持可选 `session_id`，并会把 chat log 挂到对应会话。
+- conversation history API。
 - streaming chat API。
 
 ### 前端与体验
@@ -814,10 +828,11 @@ OPENAI_API_KEY
 
 1. chat session 表。
 2. chat session repository 和基础 API。
-3. conversation history。
-4. streaming response。
-5. 简单前端聊天 UI。
-6. 文档上传 UI。
+3. `/chat` 挂载 session。
+4. conversation history。
+5. streaming response。
+6. 简单前端聊天 UI。
+7. 文档上传 UI。
 
 ### 阶段 E：生产化
 
@@ -837,7 +852,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-chat session / conversation API 第三步：把 /chat 请求挂到 session
+chat session / conversation API 第四步：按 session 查询 conversation history
 ```
 
 原因：
@@ -850,7 +865,7 @@ chat session / conversation API 第三步：把 /chat 请求挂到 session
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository 和基础 API 已完成，下一步让 `/chat` 支持 `session_id` 并把 chat log 挂到会话。
+- chat session 表、repository、基础 API 和 `/chat` 的 `session_id` 挂载都已完成，下一步补按 session 查询 conversation history 的 API。
 
 启用 OpenAI embedding 后可以先跑：
 
