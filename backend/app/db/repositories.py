@@ -44,6 +44,12 @@ class CreateChatLogInput:
 
 
 @dataclass(frozen=True)
+class ChatLogListResult:
+    total: int
+    logs: list[ChatLog]
+
+
+@dataclass(frozen=True)
 class CreateChatSessionInput:
     workspace_id: str = "public"
     title: str | None = None
@@ -398,6 +404,37 @@ class ChatLogRepository:
             .limit(limit)
         )
         return list((await self.session.scalars(statement)).all())
+
+    async def list_chat_logs_by_session(
+        self,
+        *,
+        session_id: uuid.UUID,
+        workspace_id: str = "public",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> ChatLogListResult:
+        workspace_id = workspace_id.strip() or "public"
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+        if offset < 0:
+            raise ValueError("offset must not be negative")
+
+        filters = (
+            ChatLog.workspace_id == workspace_id,
+            ChatLog.session_id == session_id,
+        )
+        total_statement = select(func.count()).select_from(ChatLog).where(*filters)
+        total = await self.session.scalar(total_statement)
+
+        statement = (
+            select(ChatLog)
+            .where(*filters)
+            .order_by(ChatLog.created_at.asc(), ChatLog.id.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        logs = list((await self.session.scalars(statement)).all())
+        return ChatLogListResult(total=int(total or 0), logs=logs)
 
 
 class ChatSessionRepository:

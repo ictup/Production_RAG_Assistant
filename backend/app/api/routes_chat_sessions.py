@@ -6,11 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.security import require_api_key
 from backend.app.db.repositories import (
+    ChatLogRepository,
     ChatSessionRepository,
     CreateChatSessionInput,
 )
 from backend.app.db.session import get_db_session
 from backend.app.schemas.chat_sessions import (
+    ChatSessionLogsResponse,
     ChatSessionResponse,
     ChatSessionsResponse,
     CreateChatSessionRequest,
@@ -25,12 +27,35 @@ async def get_chat_session_repository(
     return ChatSessionRepository(session=session)
 
 
+async def get_chat_log_repository(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ChatLogRepository:
+    return ChatLogRepository(session=session)
+
+
 def normalize_workspace_id(workspace_id: str | None) -> str:
     if workspace_id is None:
         return "public"
 
     normalized = workspace_id.strip()
     return normalized or "public"
+
+
+async def get_chat_session_or_404(
+    *,
+    session_id: uuid.UUID,
+    workspace_id: str,
+    repository: ChatSessionRepository,
+) -> None:
+    chat_session = await repository.get_session(
+        session_id=session_id,
+        workspace_id=workspace_id,
+    )
+    if chat_session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="chat session not found",
+        )
 
 
 @router.post(
@@ -110,4 +135,44 @@ async def get_chat_session(
     return ChatSessionResponse.from_model(
         workspace_id=normalized_workspace_id,
         chat_session=chat_session,
+    )
+
+
+@router.get(
+    "/chat/sessions/{session_id}/logs",
+    response_model=ChatSessionLogsResponse,
+)
+async def list_chat_session_logs(
+    session_id: uuid.UUID,
+    _api_key: Annotated[str, Depends(require_api_key)],
+    chat_session_repository: Annotated[
+        ChatSessionRepository,
+        Depends(get_chat_session_repository),
+    ],
+    chat_log_repository: Annotated[
+        ChatLogRepository,
+        Depends(get_chat_log_repository),
+    ],
+    workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ChatSessionLogsResponse:
+    normalized_workspace_id = normalize_workspace_id(workspace_id)
+    await get_chat_session_or_404(
+        session_id=session_id,
+        workspace_id=normalized_workspace_id,
+        repository=chat_session_repository,
+    )
+    result = await chat_log_repository.list_chat_logs_by_session(
+        session_id=session_id,
+        workspace_id=normalized_workspace_id,
+        limit=limit,
+        offset=offset,
+    )
+    return ChatSessionLogsResponse.from_result(
+        workspace_id=normalized_workspace_id,
+        session_id=str(session_id),
+        limit=limit,
+        offset=offset,
+        result=result,
     )

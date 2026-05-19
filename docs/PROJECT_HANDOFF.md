@@ -31,6 +31,7 @@ https://github.com/ictup/Production_RAG_Assistant.git
 - chat session 创建接口：`POST /chat/sessions`
 - chat session 列表接口：`GET /chat/sessions`
 - chat session 详情接口：`GET /chat/sessions/{session_id}`
+- chat session 历史日志接口：`GET /chat/sessions/{session_id}/logs`
 - 文档上传接口：`POST /documents`
 - 文档列表接口：`GET /documents`
 - 文档详情接口：`GET /documents/{document_id}`
@@ -360,6 +361,24 @@ curl.exe http://127.0.0.1:8000/chat/sessions/<session_id> `
   -H "X-Workspace-ID: public"
 ```
 
+查询某个会话下的对话历史，按 `created_at` 从旧到新返回：
+
+```powershell
+curl.exe "http://127.0.0.1:8000/chat/sessions/<session_id>/logs?limit=50&offset=0" `
+  -H "Authorization: Bearer dev-key" `
+  -H "X-Workspace-ID: public"
+```
+
+响应包含：
+
+- `workspace_id`
+- `session_id`
+- `total`
+- `count`
+- `limit`
+- `offset`
+- `logs`
+
 ### Documents
 
 上传 Markdown 文档：
@@ -493,7 +512,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-272 passed
+277 passed
 ```
 
 ### Pipeline Smoke
@@ -747,7 +766,7 @@ Repository -> Settings -> Actions -> General
 - chat session repository 和基础 API 已完成：`POST /chat/sessions`、`GET /chat/sessions`、`GET /chat/sessions/{session_id}`。
 - workspace 管理 API。
 - `/chat` 已支持可选 `session_id`，并会把 chat log 挂到对应会话。
-- conversation history API。
+- conversation history API 已完成：`GET /chat/sessions/{session_id}/logs`。
 - streaming chat API。
 
 ### 前端与体验
@@ -852,7 +871,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-chat session / conversation API 第四步：按 session 查询 conversation history
+chat API 第五步：streaming response
 ```
 
 原因：
@@ -865,7 +884,7 @@ chat session / conversation API 第四步：按 session 查询 conversation hist
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository、基础 API 和 `/chat` 的 `session_id` 挂载都已完成，下一步补按 session 查询 conversation history 的 API。
+- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载和 conversation history API 都已完成，下一步补 streaming response。
 
 启用 OpenAI embedding 后可以先跑：
 

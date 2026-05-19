@@ -541,6 +541,65 @@ async def test_list_recent_chat_logs_rejects_invalid_limit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_chat_logs_by_session_filters_workspace_and_session() -> None:
+    session_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+    chat_log = ChatLog(
+        request_id="request-1",
+        workspace_id="tenant-a",
+        session_id=session_id,
+        question="What is FlashAttention?",
+        answer="FlashAttention is IO-aware. [1]",
+        sources=[],
+        retrieval={},
+        usage={},
+        refusal=None,
+        citation_valid=True,
+        latency_ms=12,
+    )
+    session = FakeAsyncSession(
+        scalar_result=7,
+        scalars_result=[chat_log],
+    )
+    repository = ChatLogRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.list_chat_logs_by_session(
+        session_id=session_id,
+        workspace_id=" tenant-a ",
+        limit=3,
+        offset=6,
+    )
+
+    assert result.total == 7
+    assert result.logs == [chat_log]
+    assert session.scalar_statement is not None
+    assert session.scalars_statement is not None
+    assert "chat_logs.workspace_id" in str(session.scalar_statement)
+    assert "chat_logs.session_id" in str(session.scalar_statement)
+    compiled = str(session.scalars_statement)
+    assert "chat_logs.workspace_id" in compiled
+    assert "chat_logs.session_id" in compiled
+    assert "ORDER BY chat_logs.created_at ASC" in compiled
+
+
+@pytest.mark.asyncio
+async def test_list_chat_logs_by_session_rejects_invalid_pagination() -> None:
+    session = FakeAsyncSession()
+    repository = ChatLogRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="limit"):
+        await repository.list_chat_logs_by_session(
+            session_id=uuid.uuid4(),
+            limit=0,
+        )
+
+    with pytest.raises(ValueError, match="offset"):
+        await repository.list_chat_logs_by_session(
+            session_id=uuid.uuid4(),
+            offset=-1,
+        )
+
+
+@pytest.mark.asyncio
 async def test_create_chat_session_adds_session_model() -> None:
     session = FakeAsyncSession()
     repository = ChatSessionRepository(session)  # type: ignore[arg-type]

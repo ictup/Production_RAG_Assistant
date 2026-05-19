@@ -4,7 +4,8 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from backend.app.db.models import ChatSession
-from backend.app.db.repositories import ChatSessionListResult
+from backend.app.db.repositories import ChatLogListResult, ChatSessionListResult
+from backend.app.schemas.chat import ChatLogItem
 
 
 class CreateChatSessionRequest(BaseModel):
@@ -85,4 +86,35 @@ class ChatSessionsResponse(BaseModel):
             limit=limit,
             offset=offset,
             sessions=sessions,
+        )
+
+
+class ChatSessionLogsResponse(BaseModel):
+    workspace_id: str
+    session_id: str
+    total: int = Field(ge=0)
+    count: int = Field(ge=0)
+    limit: int = Field(gt=0)
+    offset: int = Field(ge=0)
+    logs: list[ChatLogItem]
+
+    @classmethod
+    def from_result(
+        cls,
+        *,
+        workspace_id: str,
+        session_id: str,
+        limit: int,
+        offset: int,
+        result: ChatLogListResult,
+    ) -> "ChatSessionLogsResponse":
+        logs = [ChatLogItem.from_model(chat_log) for chat_log in result.logs]
+        return cls(
+            workspace_id=workspace_id,
+            session_id=session_id,
+            total=result.total,
+            count=len(logs),
+            limit=limit,
+            offset=offset,
+            logs=logs,
         )

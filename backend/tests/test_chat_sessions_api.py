@@ -5,8 +5,9 @@ from fastapi.testclient import TestClient
 
 from backend.app.api import routes_chat_sessions
 from backend.app.core.config import Settings, get_settings
-from backend.app.db.models import ChatSession
+from backend.app.db.models import ChatLog, ChatSession
 from backend.app.db.repositories import (
+    ChatLogListResult,
     ChatSessionListResult,
     CreateChatSessionInput,
 )
@@ -62,6 +63,23 @@ class FakeChatSessionRepository:
         return self.detail_session
 
 
+class FakeChatLogRepository:
+    def __init__(self, list_result: ChatLogListResult | None = None) -> None:
+        self.list_result = list_result or ChatLogListResult(total=0, logs=[])
+        self.list_calls: list[tuple[uuid.UUID, str, int, int]] = []
+
+    async def list_chat_logs_by_session(
+        self,
+        *,
+        session_id: uuid.UUID,
+        workspace_id: str = "public",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> ChatLogListResult:
+        self.list_calls.append((session_id, workspace_id, limit, offset))
+        return self.list_result
+
+
 def make_chat_session_model() -> ChatSession:
     return ChatSession(
         id=uuid.UUID("33333333-3333-3333-3333-333333333333"),
@@ -73,12 +91,37 @@ def make_chat_session_model() -> ChatSession:
     )
 
 
-def build_client(fake_repository: FakeChatSessionRepository) -> TestClient:
+def make_chat_log_model() -> ChatLog:
+    return ChatLog(
+        id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
+        request_id="request-1",
+        workspace_id="tenant-a",
+        session_id=uuid.UUID("33333333-3333-3333-3333-333333333333"),
+        question="What problem does FlashAttention solve?",
+        answer="FlashAttention reduces memory traffic. [1]",
+        sources=[{"source_id": "1", "title": "FlashAttention Notes"}],
+        retrieval={"mode": "hybrid_rrf_rerank"},
+        usage={"model": "fake-llm", "latency_ms": 12},
+        refusal=None,
+        citation_valid=True,
+        latency_ms=12,
+        created_at=datetime(2026, 5, 18, 8, 30, tzinfo=UTC),
+    )
+
+
+def build_client(
+    fake_repository: FakeChatSessionRepository,
+    fake_chat_log_repository: FakeChatLogRepository | None = None,
+) -> TestClient:
+    fake_chat_log_repository = fake_chat_log_repository or FakeChatLogRepository()
     settings = Settings(api_keys="dev-key")
     app = create_app(settings)
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[routes_chat_sessions.get_chat_session_repository] = (
         lambda: fake_repository
+    )
+    app.dependency_overrides[routes_chat_sessions.get_chat_log_repository] = (
+        lambda: fake_chat_log_repository
     )
     return TestClient(app)
 
@@ -237,6 +280,84 @@ def test_get_chat_session_route_rejects_invalid_uuid() -> None:
     assert fake_repository.detail_calls == []
 
 
+def test_list_chat_session_logs_route_returns_paginated_logs() -> None:
+    session_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+    fake_repository = FakeChatSessionRepository(
+        detail_session=make_chat_session_model()
+    )
+    fake_chat_log_repository = FakeChatLogRepository(
+        list_result=ChatLogListResult(total=3, logs=[make_chat_log_model()])
+    )
+    client = build_client(fake_repository, fake_chat_log_repository)
+
+    response = client.get(
+        f"/chat/sessions/{session_id}/logs",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "  tenant-a  ",
+        },
+        params={"limit": 2, "offset": 1},
+    )
+
+    assert response.status_code == 200
+    assert fake_repository.detail_calls == [(session_id, "tenant-a")]
+    assert fake_chat_log_repository.list_calls == [
+        (session_id, "tenant-a", 2, 1)
+    ]
+    body = response.json()
+    assert body["workspace_id"] == "tenant-a"
+    assert body["session_id"] == str(session_id)
+    assert body["total"] == 3
+    assert body["count"] == 1
+    assert body["limit"] == 2
+    assert body["offset"] == 1
+    assert body["logs"][0]["id"] == "11111111-1111-1111-1111-111111111111"
+    assert body["logs"][0]["session_id"] == str(session_id)
+    assert body["logs"][0]["question"] == "What problem does FlashAttention solve?"
+
+
+def test_list_chat_session_logs_route_returns_404_for_missing_session() -> None:
+    session_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+    fake_repository = FakeChatSessionRepository(detail_session=None)
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_repository, fake_chat_log_repository)
+
+    response = client.get(
+        f"/chat/sessions/{session_id}/logs",
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "chat session not found"}
+    assert fake_repository.detail_calls == [(session_id, "public")]
+    assert fake_chat_log_repository.list_calls == []
+
+
+def test_list_chat_session_logs_route_rejects_invalid_pagination() -> None:
+    session_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+    fake_repository = FakeChatSessionRepository(
+        detail_session=make_chat_session_model()
+    )
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_repository, fake_chat_log_repository)
+
+    limit_response = client.get(
+        f"/chat/sessions/{session_id}/logs",
+        headers=AUTH_HEADERS,
+        params={"limit": 0},
+    )
+    offset_response = client.get(
+        f"/chat/sessions/{session_id}/logs",
+        headers=AUTH_HEADERS,
+        params={"offset": -1},
+    )
+
+    assert limit_response.status_code == 422
+    assert offset_response.status_code == 422
+    assert fake_repository.detail_calls == []
+    assert fake_chat_log_repository.list_calls == []
+
+
 def test_openapi_exposes_chat_session_routes() -> None:
     fake_repository = FakeChatSessionRepository()
     client = build_client(fake_repository)
@@ -247,3 +368,4 @@ def test_openapi_exposes_chat_session_routes() -> None:
     paths = response.json()["paths"]
     assert "/chat/sessions" in paths
     assert "/chat/sessions/{session_id}" in paths
+    assert "/chat/sessions/{session_id}/logs" in paths
