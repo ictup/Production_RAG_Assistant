@@ -16,6 +16,7 @@ from backend.app.core.cors import add_cors_middleware
 from backend.app.core.logging import RequestLoggingMiddleware, configure_logging
 from backend.app.core.rate_limit import add_rate_limit_middleware
 from backend.app.core.request_id import RequestIDMiddleware
+from backend.app.core.tracing import TraceContextMiddleware
 from backend.app.observability.metrics import RequestMetricsMiddleware
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -31,6 +32,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     add_rate_limit_middleware(app, settings)
+    app.add_middleware(TraceContextMiddleware)
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(RequestMetricsMiddleware)
     app.add_middleware(RequestLoggingMiddleware)

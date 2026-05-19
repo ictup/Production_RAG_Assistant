@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.config import Settings, get_settings
+from backend.app.core.tracing import trace_span
 from backend.app.rag.citations import Source, build_sources, validate_citations
 from backend.app.rag.embeddings import EmbeddingClient, build_embedding_client
 from backend.app.rag.fusion import reciprocal_rank_fusion
@@ -105,7 +106,11 @@ class RagPipeline:
         fused_top_k = request.fused_top_k or self.settings.fused_top_k
         rerank_top_n = request.rerank_top_n or self.settings.rerank_top_n
 
-        question_refusal = should_refuse_question(request.question)
+        with trace_span(
+            "rag.question_guard",
+            {"question_length": len(request.question)},
+        ):
+            question_refusal = should_refuse_question(request.question)
         if question_refusal is not None:
             return build_refusal_response(
                 refusal=question_refusal,
@@ -121,32 +126,68 @@ class RagPipeline:
                 started_at=started_at,
             )
 
-        embedding_started_at = time.perf_counter()
-        query_embedding = await self.embedding_client.embed_query(request.question)
-        embedding_latency_ms = max(
-            0,
-            int((time.perf_counter() - embedding_started_at) * 1000),
-        )
-        vector_results = await VectorRetriever(self.session).retrieve(
-            query_embedding=query_embedding,
-            top_k=vector_top_k,
-            workspace_id=request.workspace_id,
-        )
-        sparse_results = await SparseRetriever(self.session).retrieve(
-            query=request.question,
-            top_k=sparse_top_k,
-            workspace_id=request.workspace_id,
-        )
-        fused_results = reciprocal_rank_fusion(
-            [vector_results, sparse_results],
-            k=self.settings.rrf_k,
-            top_n=fused_top_k,
-        )
+        with trace_span(
+            "rag.embedding",
+            {
+                "provider": self.embedding_client.provider_name,
+                "model": self.embedding_client.model_name,
+            },
+        ):
+            embedding_started_at = time.perf_counter()
+            query_embedding = await self.embedding_client.embed_query(request.question)
+            embedding_latency_ms = max(
+                0,
+                int((time.perf_counter() - embedding_started_at) * 1000),
+            )
+        with trace_span(
+            "rag.vector_retrieval",
+            {
+                "workspace_id": request.workspace_id,
+                "top_k": vector_top_k,
+            },
+        ):
+            vector_results = await VectorRetriever(self.session).retrieve(
+                query_embedding=query_embedding,
+                top_k=vector_top_k,
+                workspace_id=request.workspace_id,
+            )
+        with trace_span(
+            "rag.sparse_retrieval",
+            {
+                "workspace_id": request.workspace_id,
+                "top_k": sparse_top_k,
+            },
+        ):
+            sparse_results = await SparseRetriever(self.session).retrieve(
+                query=request.question,
+                top_k=sparse_top_k,
+                workspace_id=request.workspace_id,
+            )
+        with trace_span(
+            "rag.fusion",
+            {
+                "vector_count": len(vector_results),
+                "sparse_count": len(sparse_results),
+                "top_n": fused_top_k,
+            },
+        ):
+            fused_results = reciprocal_rank_fusion(
+                [vector_results, sparse_results],
+                k=self.settings.rrf_k,
+                top_n=fused_top_k,
+            )
 
-        refusal = should_refuse(
-            fused_results,
-            threshold=self.settings.refusal_score_threshold,
-        )
+        with trace_span(
+            "rag.retrieval_guard",
+            {
+                "fused_count": len(fused_results),
+                "threshold": self.settings.refusal_score_threshold,
+            },
+        ):
+            refusal = should_refuse(
+                fused_results,
+                threshold=self.settings.refusal_score_threshold,
+            )
         if refusal is not None:
             return build_refusal_response(
                 refusal=refusal,
@@ -163,24 +204,45 @@ class RagPipeline:
                 embedding_latency_ms=embedding_latency_ms,
             )
 
-        used_chunks = (
-            await self.reranker.rerank(
-                query=request.question,
-                chunks=fused_results,
-                top_n=rerank_top_n,
+        with trace_span(
+            "rag.rerank",
+            {
+                "enabled": request.rerank,
+                "provider": self.reranker.provider_name,
+                "input_count": len(fused_results),
+                "top_n": rerank_top_n,
+            },
+        ):
+            used_chunks = (
+                await self.reranker.rerank(
+                    query=request.question,
+                    chunks=fused_results,
+                    top_n=rerank_top_n,
+                )
+                if request.rerank
+                else fused_results[:rerank_top_n]
             )
-            if request.rerank
-            else fused_results[:rerank_top_n]
-        )
         prompt = build_rag_prompt(request.question, used_chunks)
-        generation_started_at = time.perf_counter()
-        generated = await self.generator.generate(prompt)
-        generation_latency_ms = max(
-            0,
-            int((time.perf_counter() - generation_started_at) * 1000),
-        )
+        with trace_span(
+            "rag.generation",
+            {
+                "provider": self.generator.provider_name,
+                "model": self.generator.model_name,
+                "source_count": len(used_chunks),
+            },
+        ):
+            generation_started_at = time.perf_counter()
+            generated = await self.generator.generate(prompt)
+            generation_latency_ms = max(
+                0,
+                int((time.perf_counter() - generation_started_at) * 1000),
+            )
         sources = build_sources(used_chunks)
-        citation_valid = validate_citations(generated.answer, len(sources))
+        with trace_span(
+            "rag.citation_validation",
+            {"source_count": len(sources)},
+        ):
+            citation_valid = validate_citations(generated.answer, len(sources))
 
         return ChatPipelineResponse(
             answer=generated.answer,
@@ -218,7 +280,11 @@ class RagPipeline:
         fused_top_k = request.fused_top_k or self.settings.fused_top_k
         rerank_top_n = request.rerank_top_n or self.settings.rerank_top_n
 
-        question_refusal = should_refuse_question(request.question)
+        with trace_span(
+            "rag.question_guard",
+            {"question_length": len(request.question)},
+        ):
+            question_refusal = should_refuse_question(request.question)
         if question_refusal is not None:
             response = build_refusal_response(
                 refusal=question_refusal,
@@ -237,32 +303,68 @@ class RagPipeline:
             yield ChatPipelineStreamEvent(event_type="completed", response=response)
             return
 
-        embedding_started_at = time.perf_counter()
-        query_embedding = await self.embedding_client.embed_query(request.question)
-        embedding_latency_ms = max(
-            0,
-            int((time.perf_counter() - embedding_started_at) * 1000),
-        )
-        vector_results = await VectorRetriever(self.session).retrieve(
-            query_embedding=query_embedding,
-            top_k=vector_top_k,
-            workspace_id=request.workspace_id,
-        )
-        sparse_results = await SparseRetriever(self.session).retrieve(
-            query=request.question,
-            top_k=sparse_top_k,
-            workspace_id=request.workspace_id,
-        )
-        fused_results = reciprocal_rank_fusion(
-            [vector_results, sparse_results],
-            k=self.settings.rrf_k,
-            top_n=fused_top_k,
-        )
+        with trace_span(
+            "rag.embedding",
+            {
+                "provider": self.embedding_client.provider_name,
+                "model": self.embedding_client.model_name,
+            },
+        ):
+            embedding_started_at = time.perf_counter()
+            query_embedding = await self.embedding_client.embed_query(request.question)
+            embedding_latency_ms = max(
+                0,
+                int((time.perf_counter() - embedding_started_at) * 1000),
+            )
+        with trace_span(
+            "rag.vector_retrieval",
+            {
+                "workspace_id": request.workspace_id,
+                "top_k": vector_top_k,
+            },
+        ):
+            vector_results = await VectorRetriever(self.session).retrieve(
+                query_embedding=query_embedding,
+                top_k=vector_top_k,
+                workspace_id=request.workspace_id,
+            )
+        with trace_span(
+            "rag.sparse_retrieval",
+            {
+                "workspace_id": request.workspace_id,
+                "top_k": sparse_top_k,
+            },
+        ):
+            sparse_results = await SparseRetriever(self.session).retrieve(
+                query=request.question,
+                top_k=sparse_top_k,
+                workspace_id=request.workspace_id,
+            )
+        with trace_span(
+            "rag.fusion",
+            {
+                "vector_count": len(vector_results),
+                "sparse_count": len(sparse_results),
+                "top_n": fused_top_k,
+            },
+        ):
+            fused_results = reciprocal_rank_fusion(
+                [vector_results, sparse_results],
+                k=self.settings.rrf_k,
+                top_n=fused_top_k,
+            )
 
-        refusal = should_refuse(
-            fused_results,
-            threshold=self.settings.refusal_score_threshold,
-        )
+        with trace_span(
+            "rag.retrieval_guard",
+            {
+                "fused_count": len(fused_results),
+                "threshold": self.settings.refusal_score_threshold,
+            },
+        ):
+            refusal = should_refuse(
+                fused_results,
+                threshold=self.settings.refusal_score_threshold,
+            )
         if refusal is not None:
             response = build_refusal_response(
                 refusal=refusal,
@@ -282,38 +384,55 @@ class RagPipeline:
             yield ChatPipelineStreamEvent(event_type="completed", response=response)
             return
 
-        used_chunks = (
-            await self.reranker.rerank(
-                query=request.question,
-                chunks=fused_results,
-                top_n=rerank_top_n,
+        with trace_span(
+            "rag.rerank",
+            {
+                "enabled": request.rerank,
+                "provider": self.reranker.provider_name,
+                "input_count": len(fused_results),
+                "top_n": rerank_top_n,
+            },
+        ):
+            used_chunks = (
+                await self.reranker.rerank(
+                    query=request.question,
+                    chunks=fused_results,
+                    top_n=rerank_top_n,
+                )
+                if request.rerank
+                else fused_results[:rerank_top_n]
             )
-            if request.rerank
-            else fused_results[:rerank_top_n]
-        )
         prompt = build_rag_prompt(request.question, used_chunks)
-        generation_started_at = time.perf_counter()
         answer_parts: list[str] = []
         generated_model = self.generator.model_name
         input_tokens = 0
         output_tokens = 0
 
-        async for generated_event in self.generator.stream(prompt):
-            if generated_event.event_type == "delta" and generated_event.delta:
-                answer_parts.append(generated_event.delta)
-                yield ChatPipelineStreamEvent(
-                    event_type="delta",
-                    delta=generated_event.delta,
-                )
-                continue
+        with trace_span(
+            "rag.generation_stream",
+            {
+                "provider": self.generator.provider_name,
+                "model": self.generator.model_name,
+                "source_count": len(used_chunks),
+            },
+        ):
+            generation_started_at = time.perf_counter()
+            async for generated_event in self.generator.stream(prompt):
+                if generated_event.event_type == "delta" and generated_event.delta:
+                    answer_parts.append(generated_event.delta)
+                    yield ChatPipelineStreamEvent(
+                        event_type="delta",
+                        delta=generated_event.delta,
+                    )
+                    continue
 
-            if generated_event.event_type == "completed":
-                if generated_event.answer is not None:
-                    answer_parts = [generated_event.answer]
-                if generated_event.model is not None:
-                    generated_model = generated_event.model
-                input_tokens = generated_event.input_tokens or 0
-                output_tokens = generated_event.output_tokens or 0
+                if generated_event.event_type == "completed":
+                    if generated_event.answer is not None:
+                        answer_parts = [generated_event.answer]
+                    if generated_event.model is not None:
+                        generated_model = generated_event.model
+                    input_tokens = generated_event.input_tokens or 0
+                    output_tokens = generated_event.output_tokens or 0
 
         generation_latency_ms = max(
             0,
@@ -321,7 +440,11 @@ class RagPipeline:
         )
         answer = "".join(answer_parts).strip()
         sources = build_sources(used_chunks)
-        citation_valid = validate_citations(answer, len(sources))
+        with trace_span(
+            "rag.citation_validation",
+            {"source_count": len(sources)},
+        ):
+            citation_valid = validate_citations(answer, len(sources))
         response = ChatPipelineResponse(
             answer=answer,
             sources=sources,

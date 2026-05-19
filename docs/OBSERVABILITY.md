@@ -1,7 +1,8 @@
 # Observability Guide
 
 The API exposes Prometheus metrics at `/metrics`. This guide maps those
-metrics to dashboard panels and alert rules.
+metrics to dashboard panels and alert rules. The API also emits structured
+trace/span logs through the `backend.trace` logger.
 
 ## Templates
 
@@ -23,6 +24,35 @@ alerting system.
 | `rag_provider_latency_seconds` | Histogram | Upstream embedding and generation provider latency. |
 | `rag_provider_tokens_total` | Counter | Upstream provider token usage by provider, model, and token type. |
 | `rag_provider_errors_total` | Counter | Upstream provider errors by provider, operation, and category. |
+
+## Trace and Span Logs
+
+Every HTTP request gets a trace id. If the client sends `X-Trace-ID`, that
+value is reused; otherwise the request id becomes the trace id. The API returns
+the resolved trace id in the `X-Trace-ID` response header.
+
+Trace spans are emitted as compact JSON logs from the `backend.trace` logger:
+
+```json
+{"attributes":{"method":"GET","path":"/health","status_code":200},"event":"trace_span","latency_ms":1,"name":"http.request","parent_span_id":null,"span_id":"...","status":"ok","trace_id":"..."}
+```
+
+RAG pipeline spans currently cover:
+
+- `rag.question_guard`
+- `rag.embedding`
+- `rag.vector_retrieval`
+- `rag.sparse_retrieval`
+- `rag.fusion`
+- `rag.retrieval_guard`
+- `rag.rerank`
+- `rag.generation`
+- `rag.generation_stream`
+- `rag.citation_validation`
+
+Span attributes intentionally avoid prompts, answers, API keys, and retrieved
+chunk text. They only include safe operational metadata such as provider name,
+model name, workspace id, top-k values, source counts, and status.
 
 ## Dashboard Panels
 
@@ -77,3 +107,5 @@ If `API_PORT` is not `8000`, replace the port in the URL.
 - Invalid citation alerts should be treated as answer quality regressions.
 - Refusal spikes can mean ingestion failed, workspace IDs do not match, or
   embeddings were not reindexed after provider changes.
+- Use `X-Trace-ID` to correlate request logs, provider errors, and trace span
+  logs for one user request.

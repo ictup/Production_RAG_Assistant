@@ -88,6 +88,16 @@ def test_observability_doc_links_templates_and_metrics_endpoint() -> None:
         assert base_metric in doc
 
 
+def test_observability_doc_describes_trace_span_logs() -> None:
+    doc = OBSERVABILITY_DOC_PATH.read_text(encoding="utf-8")
+
+    assert "X-Trace-ID" in doc
+    assert "backend.trace" in doc
+    assert "rag.embedding" in doc
+    assert "rag.generation" in doc
+    assert "prompts, answers, API keys" in doc
+
+
 def test_observability_doc_is_linked_from_entry_documents() -> None:
     expected_link = "docs/OBSERVABILITY.md"
 

@@ -1,9 +1,12 @@
+import json
+import logging
 import uuid
 
 import pytest
 from pydantic import ValidationError
 
 from backend.app.core.config import Settings
+from backend.app.core.tracing import TRACE_LOGGER_NAME, trace_context
 from backend.app.rag.embeddings import FakeEmbeddingClient
 from backend.app.rag.generation import FakeGenerator
 from backend.app.rag.pipeline import ChatPipelineRequest, RagPipeline
@@ -107,6 +110,55 @@ async def test_pipeline_answers_with_sources_and_valid_citations() -> None:
     assert response.usage.generation_latency_ms >= 0
     assert response.sources[0].chunk_id == str(chunk_id)
     assert len(session.statements) == 2
+
+
+@pytest.mark.asyncio
+async def test_pipeline_emits_trace_spans_when_trace_context_exists(caplog) -> None:
+    chunk_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    session = FakeAsyncSession(
+        [
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+        ]
+    )
+    pipeline = RagPipeline(
+        session=session,  # type: ignore[arg-type]
+        settings=make_settings(),
+        embedding_client=FakeEmbeddingClient(
+            dimension=1536,
+            model_name="test-fake-embedding",
+        ),
+        reranker=NoOpReranker(),
+        generator=FakeGenerator(model_name="test-fake-llm"),
+    )
+
+    with caplog.at_level(logging.INFO, logger=TRACE_LOGGER_NAME):
+        with trace_context("trace-pipeline"):
+            response = await pipeline.answer_question(
+                ChatPipelineRequest(
+                    question="What problem does FlashAttention solve?",
+                    workspace_id="public",
+                )
+            )
+
+    assert response.refusal is None
+    span_names = {
+        json.loads(record.getMessage())["name"]
+        for record in caplog.records
+        if record.name == TRACE_LOGGER_NAME
+    }
+    assert {
+        "rag.question_guard",
+        "rag.embedding",
+        "rag.vector_retrieval",
+        "rag.sparse_retrieval",
+        "rag.fusion",
+        "rag.retrieval_guard",
+        "rag.rerank",
+        "rag.generation",
+        "rag.citation_validation",
+    }.issubset(span_names)
 
 
 @pytest.mark.asyncio

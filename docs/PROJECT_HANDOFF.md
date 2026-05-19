@@ -68,7 +68,9 @@ docs/OBSERVABILITY.md
 - API key 鉴权：`Authorization: Bearer dev-key`
 - workspace 隔离头：`X-Workspace-ID`
 - request id 中间件：支持客户端传入 `X-Request-ID`
+- trace context 中间件：支持客户端传入 `X-Trace-ID`，并返回 `X-Trace-ID`
 - 结构化请求日志中间件
+- 结构化 trace/span 日志：`backend.trace`
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
@@ -687,7 +689,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-323 passed
+331 passed
 ```
 
 ### Pipeline Smoke
@@ -973,7 +975,7 @@ Repository -> Settings -> Actions -> General
 
 ### 可观测性
 
-- trace/span 集成。
+- trace/span 集成已完成：HTTP request span、RAG pipeline 关键阶段 span、`X-Trace-ID` 关联。
 - dashboard 和 alert 模板已完成：`docs/OBSERVABILITY.md`、`monitoring/grafana/rag-dashboard.json`、`monitoring/prometheus/rag-alerts.yml`。
 - 慢查询监控。
 - eval 趋势记录。
@@ -1058,7 +1060,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-trace/span 集成
+慢查询监控方案
 ```
 
 原因：
@@ -1071,7 +1073,7 @@ trace/span 集成
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose、CORS、基础 rate limit、配置/secrets 文档、部署 runbook、dashboard 和 alert 模板都已完成，下一步给请求、检索和 provider 调用补 trace/span 级链路观察。
+- chat session 表、repository、基础 API、`/chat` 的 `session_id` 挂载、conversation history API、API 层 SSE streaming、底层 OpenAI Responses token streaming、最小聊天 UI、文档上传/reindex UI、backend Dockerfile、production compose、CORS、基础 rate limit、配置/secrets 文档、部署 runbook、dashboard 和 alert 模板、trace/span 日志都已完成，下一步补 Postgres 慢查询监控方案。
 
 启用 OpenAI embedding 后可以先跑：
 
