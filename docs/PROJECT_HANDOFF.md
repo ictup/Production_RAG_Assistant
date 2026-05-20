@@ -99,7 +99,7 @@ docs/EVAL_TRENDS.md
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency/cost 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
-- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、编辑、归档、恢复、workspace 搜索、分页、状态过滤和批量归档/恢复、归档 workspace 写入控件禁用、只读 admin overview、chat log audit filters、chat log audit export 和 chat log audit details
+- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、编辑、归档、恢复、workspace 搜索、分页、状态过滤、当前页批量归档/恢复和跨页匹配批量预览/确认、归档 workspace 写入控件禁用、只读 admin overview、chat log audit filters、chat log audit export 和 chat log audit details
 
 ### 数据库与迁移
 
@@ -1270,10 +1270,11 @@ Completed: 2026-05-20T09:51:56Z
 - workspace 批量操作 UI 基础版已完成：Admin overview 支持当前页多选 workspace，并调用 bulk archive / restore API。
 - workspace 跨页批量预览基础版已完成：`GET /workspaces/bulk/preview` 会按当前 `q`、`status` 和 API key 权限返回匹配总数与样本 workspace，用于后续确认流。
 - workspace 跨页批量确认执行基础版已完成：`POST /workspaces/bulk/archive-matching` 和 `POST /workspaces/bulk/restore-matching` 要求 `confirm=true` 与 `expected_total` 匹配当前查询总数后才执行。
+- workspace 跨页批量 UI 确认流已完成：Admin overview 可按当前 status/search 预览匹配总数和样本，再带 `expected_total` 与 `confirm=true` 调用 archive-matching / restore-matching。
 - chat log 审计过滤基础版已完成：`GET /chat/logs` 支持 `offset`、`session_id`、`request_id`、`refusal_only`、`citation_valid`，Admin overview 支持对应筛选和 Previous/Next 翻页。
 - chat log 审计导出基础版已完成：`GET /chat/logs/export` 支持同一组过滤参数，可导出 JSONL 或 CSV，Admin overview 可按当前过滤条件触发下载。
 - chat log 审计详情基础版已完成：每条最近日志可展开查看 session、request、citation、sources、refusal、retrieval、query rewrite、metadata filter、usage 和 cost。
-- 完整管理后台仍未完成：还缺少用户/角色/组织管理、跨页批量选择、导出任务异步化/大文件存储、批量运维操作和权限分层 UI。
+- 完整管理后台仍未完成：还缺少用户/角色/组织管理、导出任务异步化/大文件存储、更完整的批量运维操作和权限分层 UI。
 
 ### 生产部署
 
@@ -1391,20 +1392,20 @@ OPENAI_API_KEY
 23. workspace 批量操作 UI 基础版。已完成。
 24. workspace 跨页批量预览基础版。已完成。
 25. workspace 跨页批量确认执行基础版。已完成。
+26. workspace 跨页批量 UI 确认流。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-workspace 跨页批量 UI 确认流
+workspace 批量操作审计记录
 ```
 
 原因：
 
-- workspace 归档/恢复 API、后端写保护、前端写入禁用、状态过滤、分页、搜索、后端状态过滤、批量操作 API、当前页批量操作 UI、跨页批量预览 API 和跨页批量确认执行 API 已完成。
-- 当前跨页执行能力只能通过 HTTP 客户端调用，Web UI 还没有预览和确认流。
-- 下一步可以在 Admin overview 中增加 “select all matching query” 的预览、确认和执行交互。
+- workspace 归档/恢复 API、后端写保护、前端写入禁用、状态过滤、分页、搜索、后端状态过滤、批量操作 API、当前页批量操作 UI、跨页批量预览 API、跨页批量确认执行 API 和跨页 UI 确认流已完成。
+- 下一步可以把单个归档/恢复、当前页批量归档/恢复、跨页匹配批量归档/恢复写入审计日志，便于追踪生产管理操作。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

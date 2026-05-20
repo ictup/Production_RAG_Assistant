@@ -565,6 +565,45 @@ textarea:focus {
   font-weight: 800;
 }
 
+.admin-workspace-matching-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 10px;
+}
+
+.admin-workspace-matching-actions span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#admin-preview-matching-workspaces {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  font-weight: 750;
+}
+
+#admin-archive-matching-workspaces {
+  border-color: rgba(180, 35, 24, 0.45);
+  background: #fff5f3;
+  color: var(--danger);
+  font-weight: 750;
+}
+
+#admin-restore-matching-workspaces {
+  color: var(--accent-dark);
+  font-weight: 750;
+}
+
 #admin-bulk-archive-workspaces {
   border-color: rgba(180, 35, 24, 0.45);
   background: #fff5f3;
@@ -926,5 +965,14 @@ textarea:focus {
 
   .admin-workspace-bulk-actions span {
     grid-column: 1 / -1;
+  }
+
+  .admin-workspace-matching-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-workspace-matching-actions span {
+    grid-column: 1 / -1;
+    white-space: normal;
   }
 }

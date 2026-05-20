@@ -30,8 +30,9 @@ real provider key is available.
 - Minimal web UI at `/app/` with sessions, history, SSE chat, document upload,
   reindex actions, workspace creation, editing, archive/restore actions, admin
   overview, workspace search, pagination, status filters, bulk archive/restore
-  actions, archived-workspace read-only guards, audit filters, audit export,
-  audit details, and chat error recovery.
+  actions, cross-page matching bulk preview/confirmation, archived-workspace
+  read-only guards, audit filters, audit export, audit details, and chat error
+  recovery.
 - Dockerfile, production-style Compose stack, deployment runbook, and CI
   workflow.
 

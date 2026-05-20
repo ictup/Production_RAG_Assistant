@@ -43,6 +43,10 @@ def test_static_app_serves_index_html() -> None:
     assert 'id="admin-bulk-archive-workspaces"' in response.text
     assert 'id="admin-bulk-restore-workspaces"' in response.text
     assert 'id="admin-clear-workspace-selection"' in response.text
+    assert 'id="admin-matching-workspace-summary"' in response.text
+    assert 'id="admin-preview-matching-workspaces"' in response.text
+    assert 'id="admin-archive-matching-workspaces"' in response.text
+    assert 'id="admin-restore-matching-workspaces"' in response.text
     assert 'id="admin-workspace-edit-form"' in response.text
     assert 'id="admin-edit-workspace-metadata"' in response.text
     assert 'id="admin-archive-workspace-reason"' in response.text
@@ -75,8 +79,15 @@ def test_static_app_serves_assets() -> None:
     assert "restoreWorkspaceFromAdmin" in script_response.text
     assert "bulkArchiveWorkspacesFromAdmin" in script_response.text
     assert "bulkRestoreWorkspacesFromAdmin" in script_response.text
+    assert "previewMatchingWorkspacesFromAdmin" in script_response.text
+    assert "archiveMatchingWorkspacesFromAdmin" in script_response.text
+    assert "restoreMatchingWorkspacesFromAdmin" in script_response.text
+    assert "matchingWorkspacePreview" in script_response.text
+    assert "expected_total: preview.total" in script_response.text
+    assert "confirm: true" in script_response.text
     assert "selectedAdminWorkspaceIds" in script_response.text
     assert "syncAdminWorkspaceSelection" in script_response.text
+    assert "syncAdminWorkspaceMatchingPreview" in script_response.text
     assert "workspaceLifecycleText" in script_response.text
     assert "setAdminWorkspaceFilter" in script_response.text
     assert "clearAdminWorkspaceSearch" in script_response.text
@@ -101,6 +112,9 @@ def test_static_app_serves_assets() -> None:
     assert "formatUsage" in script_response.text
     assert "formatCost" in script_response.text
     assert "/workspaces?" in script_response.text
+    assert "/workspaces/bulk/preview" in script_response.text
+    assert "/workspaces/bulk/archive-matching" in script_response.text
+    assert "/workspaces/bulk/restore-matching" in script_response.text
     assert "/workspaces/bulk/archive" in script_response.text
     assert "/workspaces/bulk/restore" in script_response.text
     assert "status: state.admin.workspaceFilter" in script_response.text
@@ -120,6 +134,7 @@ def test_static_app_serves_assets() -> None:
     assert ".admin-workspace-filter-actions" in style_response.text
     assert ".admin-workspace-search-form" in style_response.text
     assert ".admin-workspace-bulk-actions" in style_response.text
+    assert ".admin-workspace-matching-actions" in style_response.text
     assert ".admin-workspace.selected" in style_response.text
     assert ".admin-create-form" in style_response.text
     assert ".admin-edit-form" in style_response.text

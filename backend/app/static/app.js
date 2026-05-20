@@ -14,6 +14,7 @@ const state = {
     workspaceFilter: "all",
     workspaceSearch: "",
     selectedWorkspaceIds: new Set(),
+    matchingWorkspacePreview: null,
     filters: {
       requestId: "",
       sessionId: "",
@@ -108,6 +109,18 @@ const els = {
   ),
   adminClearWorkspaceSelection: document.querySelector(
     "#admin-clear-workspace-selection",
+  ),
+  adminMatchingWorkspaceSummary: document.querySelector(
+    "#admin-matching-workspace-summary",
+  ),
+  adminPreviewMatchingWorkspaces: document.querySelector(
+    "#admin-preview-matching-workspaces",
+  ),
+  adminArchiveMatchingWorkspaces: document.querySelector(
+    "#admin-archive-matching-workspaces",
+  ),
+  adminRestoreMatchingWorkspaces: document.querySelector(
+    "#admin-restore-matching-workspaces",
   ),
   adminWorkspaceList: document.querySelector("#admin-workspace-list"),
   adminPrevLogs: document.querySelector("#admin-prev-logs"),
@@ -221,12 +234,14 @@ function bindEvents() {
       state.admin.workspaceOffset - state.admin.workspaceLimit,
     );
     clearAdminWorkspaceSelectionState();
+    clearAdminWorkspaceMatchingPreviewState();
     void loadAdminOverview();
   });
 
   els.adminNextWorkspaces.addEventListener("click", () => {
     state.admin.workspaceOffset += state.admin.workspaceLimit;
     clearAdminWorkspaceSelectionState();
+    clearAdminWorkspaceMatchingPreviewState();
     void loadAdminOverview();
   });
 
@@ -235,6 +250,7 @@ function bindEvents() {
     state.admin.workspaceSearch = els.adminWorkspaceSearch.value.trim();
     state.admin.workspaceOffset = 0;
     clearAdminWorkspaceSelectionState();
+    clearAdminWorkspaceMatchingPreviewState();
     void loadAdminOverview();
   });
 
@@ -253,6 +269,18 @@ function bindEvents() {
 
   els.adminClearWorkspaceSelection.addEventListener("click", () => {
     clearAdminWorkspaceSelection();
+  });
+
+  els.adminPreviewMatchingWorkspaces.addEventListener("click", () => {
+    void previewMatchingWorkspacesFromAdmin();
+  });
+
+  els.adminArchiveMatchingWorkspaces.addEventListener("click", () => {
+    void archiveMatchingWorkspacesFromAdmin();
+  });
+
+  els.adminRestoreMatchingWorkspaces.addEventListener("click", () => {
+    void restoreMatchingWorkspacesFromAdmin();
   });
 
   els.adminFilterForm.addEventListener("submit", (event) => {
@@ -412,6 +440,7 @@ async function createWorkspaceFromAdmin() {
     state.admin.workspaceOffset = 0;
     state.admin.workspaceFilter = "all";
     clearAdminWorkspaceSearch();
+    clearAdminWorkspaceMatchingPreviewState();
     state.admin.logOffset = 0;
     if (changed) {
       clearSelectedSession();
@@ -491,6 +520,7 @@ async function archiveWorkspaceFromAdmin() {
     if (body.workspace.id === state.workspaceId) {
       state.admin.workspaceFilter = "all";
       state.admin.workspaceOffset = 0;
+      clearAdminWorkspaceMatchingPreviewState();
       renderAdminWorkspaceFilters();
     }
     await loadAdminOverview();
@@ -550,9 +580,11 @@ async function bulkArchiveWorkspacesFromAdmin() {
     if (workspaceIds.includes(state.workspaceId)) {
       state.admin.workspaceFilter = "all";
       state.admin.workspaceOffset = 0;
+      clearAdminWorkspaceMatchingPreviewState();
       renderAdminWorkspaceFilters();
     }
     clearAdminWorkspaceSelectionState();
+    clearAdminWorkspaceMatchingPreviewState();
     await loadAdminOverview();
     setAdminStatus(`Archived ${body.updated_count} workspace(s)`);
   } catch (error) {
@@ -580,12 +612,117 @@ async function bulkRestoreWorkspacesFromAdmin() {
     });
     const body = await response.json();
     clearAdminWorkspaceSelectionState();
+    clearAdminWorkspaceMatchingPreviewState();
     await loadAdminOverview();
     setAdminStatus(`Restored ${body.updated_count} workspace(s)`);
   } catch (error) {
     setAdminError(error.message);
   } finally {
     syncAdminWorkspaceSelection();
+  }
+}
+
+async function previewMatchingWorkspacesFromAdmin() {
+  clearAdminWorkspaceMatchingPreviewState();
+  setAdminWorkspaceMatchingButtonsDisabled(true);
+  setAdminStatus("Previewing matching workspaces");
+  try {
+    const response = await apiFetch(buildMatchingWorkspacesPreviewUrl());
+    const body = await response.json();
+    state.admin.matchingWorkspacePreview = {
+      q: body.q || null,
+      status: body.status || state.admin.workspaceFilter,
+      total: body.total || 0,
+      sampleCount: body.sample_count || 0,
+      sampleLimit: body.sample_limit || state.admin.workspaceLimit,
+      workspaceIds: (body.workspaces || []).map((workspace) => workspace.id),
+    };
+    syncAdminWorkspaceMatchingPreview();
+    setAdminStatus(`Previewed ${body.total || 0} matching workspace(s)`);
+  } catch (error) {
+    setAdminError(error.message);
+    syncAdminWorkspaceMatchingPreview();
+  }
+}
+
+async function archiveMatchingWorkspacesFromAdmin() {
+  await executeMatchingWorkspaceOperation({
+    action: "archive",
+    path: "/workspaces/bulk/archive-matching",
+    statusMessage: "Archiving matching workspaces",
+    doneMessage: "Archived",
+  });
+}
+
+async function restoreMatchingWorkspacesFromAdmin() {
+  await executeMatchingWorkspaceOperation({
+    action: "restore",
+    path: "/workspaces/bulk/restore-matching",
+    statusMessage: "Restoring matching workspaces",
+    doneMessage: "Restored",
+  });
+}
+
+async function executeMatchingWorkspaceOperation({
+  action,
+  path,
+  statusMessage,
+  doneMessage,
+}) {
+  const preview = state.admin.matchingWorkspacePreview;
+  if (!preview) {
+    setAdminError("preview matching workspaces first");
+    return;
+  }
+  if (!isMatchingWorkspacePreviewCurrent()) {
+    clearAdminWorkspaceMatchingPreviewState();
+    syncAdminWorkspaceMatchingPreview();
+    setAdminError("workspace query changed; preview matching workspaces again");
+    return;
+  }
+  if (preview.total === 0) {
+    setAdminError("no matching workspaces to update");
+    return;
+  }
+
+  setAdminWorkspaceMatchingButtonsDisabled(true);
+  setAdminWorkspaceBulkButtonsDisabled(true);
+  setAdminStatus(statusMessage);
+  try {
+    const payload = {
+      q: preview.q,
+      status: preview.status,
+      expected_total: preview.total,
+      confirm: true,
+    };
+    if (action === "archive") {
+      payload.reason = optionalText(els.adminArchiveWorkspaceReason.value);
+    }
+    const response = await apiFetch(path, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json();
+    const updatedWorkspaces = body.workspaces || [];
+    const updatesCurrentWorkspace = updatedWorkspaces.some(
+      (workspace) => workspace.id === state.workspaceId,
+    );
+    if (updatesCurrentWorkspace) {
+      state.admin.workspaceFilter = "all";
+      state.admin.workspaceOffset = 0;
+      renderAdminWorkspaceFilters();
+    }
+    clearAdminWorkspaceSelectionState();
+    clearAdminWorkspaceMatchingPreviewState();
+    await loadAdminOverview();
+    setAdminStatus(
+      `${doneMessage} ${body.updated_count || 0} matching workspace(s)`,
+    );
+  } catch (error) {
+    setAdminError(error.message);
+  } finally {
+    syncAdminWorkspaceSelection();
+    syncAdminWorkspaceMatchingPreview();
   }
 }
 
@@ -614,6 +751,17 @@ function buildWorkspacesUrl() {
     params.set("q", state.admin.workspaceSearch);
   }
   return `/workspaces?${params.toString()}`;
+}
+
+function buildMatchingWorkspacesPreviewUrl() {
+  const params = new URLSearchParams({
+    status: state.admin.workspaceFilter,
+    sample_limit: String(state.admin.workspaceLimit),
+  });
+  if (state.admin.workspaceSearch) {
+    params.set("q", state.admin.workspaceSearch);
+  }
+  return `/workspaces/bulk/preview?${params.toString()}`;
 }
 
 function buildChatLogsExportUrl(format) {
@@ -673,6 +821,7 @@ function clearAdminWorkspaceSearch() {
   els.adminWorkspaceSearch.value = "";
   state.admin.workspaceOffset = 0;
   clearAdminWorkspaceSelectionState();
+  clearAdminWorkspaceMatchingPreviewState();
 }
 
 function selectedAdminWorkspaceIds() {
@@ -699,6 +848,10 @@ function clearAdminWorkspaceSelectionState() {
   state.admin.selectedWorkspaceIds.clear();
 }
 
+function clearAdminWorkspaceMatchingPreviewState() {
+  state.admin.matchingWorkspacePreview = null;
+}
+
 function toggleAdminWorkspaceSelection(workspaceId, selected) {
   if (selected) {
     state.admin.selectedWorkspaceIds.add(workspaceId);
@@ -718,6 +871,61 @@ function setAdminWorkspaceBulkButtonsDisabled(disabled) {
   els.adminBulkArchiveWorkspaces.disabled = disabled;
   els.adminBulkRestoreWorkspaces.disabled = disabled;
   els.adminClearWorkspaceSelection.disabled = disabled;
+}
+
+function syncAdminWorkspaceMatchingPreview() {
+  const preview = state.admin.matchingWorkspacePreview;
+  if (!preview) {
+    els.adminMatchingWorkspaceSummary.textContent =
+      "Preview required for matching actions";
+    setAdminWorkspaceMatchingButtonsDisabled(false);
+    return;
+  }
+
+  const searchText = preview.q ? ` / search "${preview.q}"` : "";
+  const sampleIds = preview.workspaceIds.slice(0, 3).join(", ");
+  const sampleText = sampleIds
+    ? ` / sample ${sampleIds}${preview.sampleCount > 3 ? " ..." : ""}`
+    : "";
+  els.adminMatchingWorkspaceSummary.textContent =
+    `${preview.total} ${workspaceStatusLabel(preview.status)} workspace(s)` +
+    `${searchText}${sampleText}`;
+  setAdminWorkspaceMatchingButtonsDisabled(false);
+}
+
+function setAdminWorkspaceMatchingButtonsDisabled(disabled) {
+  const canExecute = canExecuteMatchingWorkspacePreview();
+  els.adminPreviewMatchingWorkspaces.disabled = disabled;
+  els.adminArchiveMatchingWorkspaces.disabled = disabled || !canExecute;
+  els.adminRestoreMatchingWorkspaces.disabled = disabled || !canExecute;
+}
+
+function canExecuteMatchingWorkspacePreview() {
+  const preview = state.admin.matchingWorkspacePreview;
+  return Boolean(
+    preview && preview.total > 0 && isMatchingWorkspacePreviewCurrent(),
+  );
+}
+
+function isMatchingWorkspacePreviewCurrent() {
+  const preview = state.admin.matchingWorkspacePreview;
+  if (!preview) {
+    return false;
+  }
+  return (
+    preview.status === state.admin.workspaceFilter &&
+    (preview.q || "") === state.admin.workspaceSearch
+  );
+}
+
+function workspaceStatusLabel(status) {
+  if (status === "active") {
+    return "active";
+  }
+  if (status === "archived") {
+    return "archived";
+  }
+  return "matching";
 }
 
 function syncWorkspaceEditForm() {
@@ -983,6 +1191,7 @@ function renderAdminOverview({
   els.adminWorkspaceCount.textContent = String(workspaceTotal);
   els.adminLogCount.textContent = String(logTotal);
   renderAdminWorkspaceFilters();
+  syncAdminWorkspaceMatchingPreview();
   renderAdminWorkspaces();
   renderAdminWorkspacePagination({
     count: workspaceCount,
@@ -1022,6 +1231,7 @@ function setAdminWorkspaceFilter(filter) {
   state.admin.workspaceFilter = filter;
   state.admin.workspaceOffset = 0;
   clearAdminWorkspaceSelectionState();
+  clearAdminWorkspaceMatchingPreviewState();
   renderAdminWorkspaceFilters();
   void loadAdminOverview();
 }
