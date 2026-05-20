@@ -72,8 +72,8 @@ jobs:
       - name: Inspect ingestion
         run: >-
           uv run python -m ingestion.inspect_ingestion
-          --min-documents 2
-          --min-chunks 2
+          --min-documents 3
+          --min-chunks 3
 
       - name: Pipeline smoke
         run: uv run python -m backend.app.rag.pipeline_smoke

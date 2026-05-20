@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,8 @@ from evals.loaders import (
     read_jsonl,
 )
 from evals.models import EvalCase
+
+SEED_DOCS_DIR = Path("data/raw")
 
 
 def test_parse_rag_eval_case_normalizes_values() -> None:
@@ -100,7 +103,7 @@ def test_load_eval_dataset_rejects_missing_file(tmp_path) -> None:
 def test_load_default_eval_suite_loads_all_checked_in_datasets() -> None:
     suite = load_default_eval_suite()
 
-    assert suite.total_cases == 6
+    assert suite.total_cases == 8
     assert [dataset.name for dataset in suite.datasets] == [
         "rag_eval_questions",
         "refusal_questions",
@@ -117,9 +120,26 @@ def test_format_eval_suite_includes_dataset_counts() -> None:
     output = format_eval_suite(load_default_eval_suite())
 
     assert "datasets: 3" in output
-    assert "total cases: 6" in output
+    assert "total cases: 8" in output
     assert "- rag_eval_questions" in output
-    assert "ids: rag_001, rag_002" in output
+    assert "ids: rag_001, rag_002, rag_003, rag_004" in output
+
+
+def test_rag_eval_expected_sources_match_seed_document_names() -> None:
+    seed_document_names = {
+        path.stem for path in SEED_DOCS_DIR.rglob("*.md") if path.is_file()
+    }
+    suite = load_default_eval_suite()
+    rag_dataset = next(
+        dataset for dataset in suite.datasets if dataset.name == "rag_eval_questions"
+    )
+    expected_sources = {
+        expected_source
+        for eval_case in rag_dataset.cases
+        for expected_source in eval_case.expected_sources
+    }
+
+    assert expected_sources <= seed_document_names
 
 
 def test_validate_eval_suite_fails_when_case_count_is_too_low() -> None:

@@ -141,7 +141,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `438 passed`.
+Current local baseline: `441 passed`.
 
 ## Configuration Model
 

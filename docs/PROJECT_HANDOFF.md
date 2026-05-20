@@ -412,7 +412,7 @@ uv run python -m ingestion.ingest --input data/raw --workspace-id public
 ### 4. 检查导入结果
 
 ```powershell
-uv run python -m ingestion.inspect_ingestion --min-documents 2 --min-chunks 2
+uv run python -m ingestion.inspect_ingestion --min-documents 3 --min-chunks 3
 ```
 
 ### 5. 启动 API
@@ -813,7 +813,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-440 passed
+441 passed
 ```
 
 ### Pipeline Smoke
@@ -867,8 +867,8 @@ uv run python -m evals.run --format summary --fail-on-failure --no-output --embe
 当前 eval 基线：
 
 ```text
-eval cases: 6/6 passed (100.0%)
-- rag_eval_questions: 2/2 passed (100.0%)
+eval cases: 8/8 passed (100.0%)
+- rag_eval_questions: 4/4 passed (100.0%)
 - refusal_questions: 2/2 passed (100.0%)
 - security_questions: 2/2 passed (100.0%)
 ```
@@ -1130,7 +1130,7 @@ Completed: 2026-05-20T09:51:56Z
 
 ### 检索质量
 
-- 更大的文档集合。
+- seed 文档集合已从 2 篇扩到 3 篇，并新增 speculative decoding 检索 eval；更大的业务文档集合仍需继续补充。
 
 ### 产品 API
 
@@ -1267,7 +1267,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-larger seed document set and retrieval eval coverage
+metadata-filter and document-management eval coverage
 ```
 
 原因：
@@ -1280,7 +1280,7 @@ larger seed document set and retrieval eval coverage
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - `.env.example` 已补充真实 OpenAI provider 的本地注释 preset，配置切换路径更清楚。
-- 当前仅有小型 seed 文档和 6 条 eval case，下一步应扩充文档集和检索评测覆盖，避免后续 provider/前端改动只在过小样本上通过。
+- 当前 seed 文档已覆盖 attention、KV cache memory management 和 speculative decoding。下一步建议先补 metadata-filter / document-management 相关 eval，让评测覆盖更多生产路径。
 
 启用 OpenAI embedding 后可以先跑：
 

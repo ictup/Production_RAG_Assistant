@@ -52,7 +52,7 @@ uv run python -m evals.run --format summary --fail-on-failure --no-output --tren
 示例结构：
 
 ```json
-{"datasets":[{"case_type":"rag","failed_cases":0,"name":"rag_eval_questions","pass_rate":1.0,"passed_cases":2,"total_cases":2}],"failed_cases":0,"failure_reasons":{},"metadata":{"embedding_provider":"fake","generator_provider":"fake","rerank":true,"workspace_id":"public"},"pass_rate":1.0,"passed_cases":6,"recorded_at":"2026-05-20T08:30:00Z","run_id":"...","total_cases":6}
+{"datasets":[{"case_type":"rag","failed_cases":0,"name":"rag_eval_questions","pass_rate":1.0,"passed_cases":4,"total_cases":4}],"failed_cases":0,"failure_reasons":{},"metadata":{"embedding_provider":"fake","generator_provider":"fake","rerank":true,"workspace_id":"public"},"pass_rate":1.0,"passed_cases":8,"recorded_at":"2026-05-20T08:30:00Z","run_id":"...","total_cases":8}
 ```
 
 ## 查看最近记录
