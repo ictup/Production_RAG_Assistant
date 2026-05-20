@@ -156,7 +156,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `597 passed`.
+Current local baseline: `598 passed`.
 
 ## Configuration Model
 
@@ -381,6 +381,7 @@ The secret scan should only match intentional placeholders, never real keys.
 - [Secret manager mapping](docs/SECRET_MANAGER_MAPPING.md)
 - [Deployment runbook](docs/DEPLOYMENT_RUNBOOK.md)
 - [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Release v0.1.0 notes](docs/releases/v0.1.0.md)
 - [Observability guide](docs/OBSERVABILITY.md)
 - [Database observability guide](docs/DATABASE_OBSERVABILITY.md)
 - [Eval trends guide](docs/EVAL_TRENDS.md)

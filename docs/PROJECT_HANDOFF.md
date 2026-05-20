@@ -46,6 +46,12 @@ docs/SECRET_MANAGER_MAPPING.md
 docs/RELEASE_CHECKLIST.md
 ```
 
+当前 release notes：
+
+```text
+docs/releases/v0.1.0.md
+```
+
 当前可观测性文档：
 
 ```text
@@ -964,7 +970,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-597 passed
+598 passed
 ```
 
 ### Pipeline Smoke

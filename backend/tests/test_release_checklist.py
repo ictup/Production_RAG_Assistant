@@ -1,6 +1,7 @@
 from pathlib import Path
 
 RELEASE_CHECKLIST_PATH = Path("docs/RELEASE_CHECKLIST.md")
+RELEASE_NOTES_PATH = Path("docs/releases/v0.1.0.md")
 README_PATH = Path("README.md")
 RUNBOOK_PATH = Path("docs/DEPLOYMENT_RUNBOOK.md")
 HANDOFF_PATH = Path("docs/PROJECT_HANDOFF.md")
@@ -55,3 +56,22 @@ def test_release_checklist_is_linked_from_entry_docs() -> None:
     assert expected_link in README_PATH.read_text(encoding="utf-8")
     assert expected_link in RUNBOOK_PATH.read_text(encoding="utf-8")
     assert expected_link in HANDOFF_PATH.read_text(encoding="utf-8")
+
+
+def test_v010_release_notes_cover_operational_release_details() -> None:
+    release_notes = RELEASE_NOTES_PATH.read_text(encoding="utf-8")
+
+    required_snippets = [
+        "# Release v0.1.0",
+        "API_KEY_ROLES",
+        "0010_create_export_jobs.py",
+        "uv run python -m backend.app.core.config_check --production",
+        "GitHub Actions `CI` succeeds",
+        "docs/RELEASE_CHECKLIST.md",
+        "docs/DEPLOYMENT_RUNBOOK.md",
+    ]
+    missing_snippets = [
+        snippet for snippet in required_snippets if snippet not in release_notes
+    ]
+
+    assert missing_snippets == []
