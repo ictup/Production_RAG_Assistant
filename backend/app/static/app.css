@@ -529,6 +529,28 @@ textarea:focus {
   font-weight: 750;
 }
 
+.admin-workspace-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-workspace-actions button {
+  min-width: 0;
+}
+
+#archive-admin-workspace {
+  border-color: rgba(180, 35, 24, 0.45);
+  background: #fff5f3;
+  color: var(--danger);
+}
+
+#restore-admin-workspace {
+  border-color: var(--border-strong);
+  background: var(--panel);
+  color: var(--accent-dark);
+}
+
 .admin-filter-grid {
   display: grid;
   gap: 10px;
@@ -609,6 +631,14 @@ textarea:focus {
 .admin-workspace.active {
   border-color: var(--accent);
   background: #edf7f5;
+}
+
+.admin-workspace.archived {
+  border-style: dashed;
+}
+
+.admin-workspace.archived .admin-meta {
+  color: var(--danger);
 }
 
 .admin-item-header {

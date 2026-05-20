@@ -93,7 +93,7 @@ docs/EVAL_TRENDS.md
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency/cost 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
-- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建与编辑、只读 admin overview、chat log audit filters、chat log audit export 和 chat log audit details
+- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、编辑、归档、恢复、只读 admin overview、chat log audit filters、chat log audit export 和 chat log audit details
 
 ### 数据库与迁移
 
@@ -519,6 +519,7 @@ http://127.0.0.1:8000/app/
 - 调用 `POST /documents/reindex` 执行 dry-run 或写入式 reindex
 - 调用 `POST /workspaces` 创建 workspace，并在成功后切换当前 workspace
 - 调用 `PATCH /workspaces/{workspace_id}` 更新当前 workspace 的 name、description 和 metadata
+- 调用 `POST /workspaces/{workspace_id}/archive` 和 `POST /workspaces/{workspace_id}/restore` 归档或恢复当前 workspace
 - 查看可访问 workspace 列表和当前 workspace 最近 chat logs
 - 按 request id、session id、refusal only、citation valid/invalid 过滤当前 workspace 的 chat logs，并用 Previous/Next 做基础翻页
 - 按当前 chat log 过滤条件导出 JSONL 或 CSV
@@ -1202,11 +1203,11 @@ Completed: 2026-05-20T09:51:56Z
 - 管理后台基础版已完成：右侧 Admin overview 可刷新可访问 workspace 列表和当前 workspace 最近 chat logs，并可从 workspace 列表切换当前 workspace。
 - workspace 管理操作基础版已完成：Admin overview 可调用 `POST /workspaces` 创建 workspace，成功后自动切换当前 workspace 并刷新会话、文档和管理概览。
 - workspace 编辑基础版已完成：`PATCH /workspaces/{workspace_id}` 可更新 name、description、metadata，Admin overview 可编辑当前 workspace。
-- workspace 软归档 API 已完成，但 Admin overview 还没有归档/恢复按钮；下一步应把 API 接入 UI。
+- workspace 归档/恢复 UI 基础版已完成：Admin overview 可展示归档状态，并调用 archive/restore API 更新当前 workspace。
 - chat log 审计过滤基础版已完成：`GET /chat/logs` 支持 `offset`、`session_id`、`request_id`、`refusal_only`、`citation_valid`，Admin overview 支持对应筛选和 Previous/Next 翻页。
 - chat log 审计导出基础版已完成：`GET /chat/logs/export` 支持同一组过滤参数，可导出 JSONL 或 CSV，Admin overview 可按当前过滤条件触发下载。
 - chat log 审计详情基础版已完成：每条最近日志可展开查看 session、request、citation、sources、refusal、retrieval、query rewrite、metadata filter、usage 和 cost。
-- 完整管理后台仍未完成：还缺少用户/角色/组织管理、workspace 归档/恢复 UI、导出任务异步化/大文件存储、批量运维操作和权限分层 UI。
+- 完整管理后台仍未完成：还缺少用户/角色/组织管理、workspace 归档过滤策略、导出任务异步化/大文件存储、批量运维操作和权限分层 UI。
 
 ### 生产部署
 
@@ -1313,20 +1314,21 @@ OPENAI_API_KEY
 12. provider 成本估算基础版。已完成。
 13. 真实 OpenAI reranker。已完成。
 14. workspace 软归档 API。已完成。
+15. workspace 归档/恢复 UI。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-workspace archive and restore UI
+workspace archived-state policy
 ```
 
 原因：
 
-- workspace 软归档字段、迁移、repository 和 API 已完成。
-- 目前 Admin overview 只能创建和编辑 workspace，无法直接触发归档/恢复。
-- 下一步把 `archived_at` / `archived_reason` 展示到 workspace 列表，并给当前 workspace 增加归档/恢复操作。
+- workspace 归档/恢复 API 和 Admin UI 已完成。
+- 当前归档 workspace 仍会出现在 workspace 列表里，也不会阻止文档上传或聊天写入。
+- 下一步应明确归档策略：默认过滤归档 workspace，或在写入路径对归档 workspace 返回业务错误。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

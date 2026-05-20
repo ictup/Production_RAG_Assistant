@@ -288,7 +288,20 @@
                   placeholder='{"tier":"internal"}'
                 ></textarea>
               </label>
-              <button id="save-admin-workspace" type="submit">Save</button>
+              <label>
+                Archive reason
+                <textarea
+                  id="admin-archive-workspace-reason"
+                  name="admin-archive-workspace-reason"
+                  rows="3"
+                  placeholder="Optional reason"
+                ></textarea>
+              </label>
+              <div class="admin-workspace-actions">
+                <button id="save-admin-workspace" type="submit">Save</button>
+                <button id="archive-admin-workspace" type="button">Archive</button>
+                <button id="restore-admin-workspace" type="button">Restore</button>
+              </div>
             </form>
             <div
               id="admin-workspace-list"

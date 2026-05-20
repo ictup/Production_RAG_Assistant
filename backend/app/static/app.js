@@ -59,7 +59,12 @@ const els = {
     "#admin-edit-workspace-description",
   ),
   adminEditWorkspaceMetadata: document.querySelector("#admin-edit-workspace-metadata"),
+  adminArchiveWorkspaceReason: document.querySelector(
+    "#admin-archive-workspace-reason",
+  ),
   saveAdminWorkspace: document.querySelector("#save-admin-workspace"),
+  archiveAdminWorkspace: document.querySelector("#archive-admin-workspace"),
+  restoreAdminWorkspace: document.querySelector("#restore-admin-workspace"),
   adminFilterForm: document.querySelector("#admin-filter-form"),
   adminRequestId: document.querySelector("#admin-request-id"),
   adminSessionId: document.querySelector("#admin-session-id"),
@@ -150,6 +155,14 @@ function bindEvents() {
   els.adminWorkspaceEditForm.addEventListener("submit", (event) => {
     event.preventDefault();
     void updateWorkspaceFromAdmin();
+  });
+
+  els.archiveAdminWorkspace.addEventListener("click", () => {
+    void archiveWorkspaceFromAdmin();
+  });
+
+  els.restoreAdminWorkspace.addEventListener("click", () => {
+    void restoreWorkspaceFromAdmin();
   });
 
   els.adminFilterForm.addEventListener("submit", (event) => {
@@ -358,6 +371,65 @@ async function updateWorkspaceFromAdmin() {
   }
 }
 
+async function archiveWorkspaceFromAdmin() {
+  const workspaceId = els.adminEditWorkspaceId.value.trim() || state.workspaceId;
+  if (!workspaceId) {
+    setAdminError("workspace id is required");
+    return;
+  }
+
+  setWorkspaceLifecycleButtonsDisabled(true);
+  setAdminStatus("Archiving workspace");
+  try {
+    const response = await apiFetch(
+      `/workspaces/${encodeURIComponent(workspaceId)}/archive`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          reason: optionalText(els.adminArchiveWorkspaceReason.value),
+        }),
+      },
+    );
+    const body = await response.json();
+    replaceAdminWorkspace(body.workspace);
+    syncWorkspaceEditForm();
+    renderAdminWorkspaces();
+    setAdminStatus(`Archived workspace ${body.workspace.id}`);
+  } catch (error) {
+    setAdminError(error.message);
+  } finally {
+    setWorkspaceLifecycleButtonsDisabled(false);
+  }
+}
+
+async function restoreWorkspaceFromAdmin() {
+  const workspaceId = els.adminEditWorkspaceId.value.trim() || state.workspaceId;
+  if (!workspaceId) {
+    setAdminError("workspace id is required");
+    return;
+  }
+
+  setWorkspaceLifecycleButtonsDisabled(true);
+  setAdminStatus("Restoring workspace");
+  try {
+    const response = await apiFetch(
+      `/workspaces/${encodeURIComponent(workspaceId)}/restore`,
+      {
+        method: "POST",
+      },
+    );
+    const body = await response.json();
+    replaceAdminWorkspace(body.workspace);
+    syncWorkspaceEditForm();
+    renderAdminWorkspaces();
+    setAdminStatus(`Restored workspace ${body.workspace.id}`);
+  } catch (error) {
+    setAdminError(error.message);
+  } finally {
+    setWorkspaceLifecycleButtonsDisabled(false);
+  }
+}
+
 function replaceAdminWorkspace(workspace) {
   state.admin.workspaces = [
     workspace,
@@ -426,12 +498,34 @@ function clearAdminFilters() {
 }
 
 function syncWorkspaceEditForm() {
-  const workspace =
-    state.admin.workspaces.find((item) => item.id === state.workspaceId) || null;
+  const workspace = currentAdminWorkspace();
   els.adminEditWorkspaceId.value = state.workspaceId || "public";
   els.adminEditWorkspaceName.value = workspace?.name || "";
   els.adminEditWorkspaceDescription.value = workspace?.description || "";
   els.adminEditWorkspaceMetadata.value = formatMetadataJson(workspace?.metadata || {});
+  els.adminArchiveWorkspaceReason.value = workspace?.archived_reason || "";
+  syncWorkspaceLifecycleButtons(workspace);
+}
+
+function currentAdminWorkspace() {
+  return (
+    state.admin.workspaces.find((item) => item.id === state.workspaceId) || null
+  );
+}
+
+function syncWorkspaceLifecycleButtons(workspace) {
+  const isArchived = Boolean(workspace?.archived_at);
+  els.archiveAdminWorkspace.disabled = isArchived;
+  els.restoreAdminWorkspace.disabled = !isArchived;
+}
+
+function setWorkspaceLifecycleButtonsDisabled(disabled) {
+  if (disabled) {
+    els.archiveAdminWorkspace.disabled = true;
+    els.restoreAdminWorkspace.disabled = true;
+    return;
+  }
+  syncWorkspaceLifecycleButtons(currentAdminWorkspace());
 }
 
 function optionalText(value) {
@@ -635,11 +729,12 @@ function renderAdminWorkspaces() {
   }
 
   for (const workspace of state.admin.workspaces) {
+    const isArchived = Boolean(workspace.archived_at);
     const item = document.createElement("button");
     item.type = "button";
     item.className = `admin-item admin-workspace${
       workspace.id === state.workspaceId ? " active" : ""
-    }`;
+    }${isArchived ? " archived" : ""}`;
     item.addEventListener("click", () => {
       selectWorkspace(workspace.id);
     });
@@ -661,12 +756,22 @@ function renderAdminWorkspaces() {
 
     const meta = document.createElement("div");
     meta.className = "admin-meta";
-    meta.textContent = `Updated ${formatTimestamp(workspace.updated_at)}`;
+    meta.textContent = workspaceLifecycleText(workspace);
 
     header.append(title, id);
     item.append(header, description, meta);
     els.adminWorkspaceList.append(item);
   }
+}
+
+function workspaceLifecycleText(workspace) {
+  if (workspace.archived_at) {
+    const reason = workspace.archived_reason
+      ? ` / ${workspace.archived_reason}`
+      : "";
+    return `Archived ${formatTimestamp(workspace.archived_at)}${reason}`;
+  }
+  return `Updated ${formatTimestamp(workspace.updated_at)}`;
 }
 
 function renderAdminLogs() {

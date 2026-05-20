@@ -29,7 +29,10 @@ def test_static_app_serves_index_html() -> None:
     assert 'id="create-admin-workspace"' in response.text
     assert 'id="admin-workspace-edit-form"' in response.text
     assert 'id="admin-edit-workspace-metadata"' in response.text
+    assert 'id="admin-archive-workspace-reason"' in response.text
     assert 'id="save-admin-workspace"' in response.text
+    assert 'id="archive-admin-workspace"' in response.text
+    assert 'id="restore-admin-workspace"' in response.text
     assert 'id="admin-filter-form"' in response.text
     assert 'id="admin-request-id"' in response.text
     assert 'id="export-admin-jsonl"' in response.text
@@ -52,6 +55,9 @@ def test_static_app_serves_assets() -> None:
     assert "loadAdminOverview" in script_response.text
     assert "createWorkspaceFromAdmin" in script_response.text
     assert "updateWorkspaceFromAdmin" in script_response.text
+    assert "archiveWorkspaceFromAdmin" in script_response.text
+    assert "restoreWorkspaceFromAdmin" in script_response.text
+    assert "workspaceLifecycleText" in script_response.text
     assert "parseMetadataJson" in script_response.text
     assert "syncWorkspaceEditForm" in script_response.text
     assert "optionalText" in script_response.text
@@ -66,6 +72,8 @@ def test_static_app_serves_assets() -> None:
     assert "formatUsage" in script_response.text
     assert "formatCost" in script_response.text
     assert "/workspaces?limit=20&offset=0" in script_response.text
+    assert "/archive" in script_response.text
+    assert "/restore" in script_response.text
     assert "/chat/logs?" in script_response.text
     assert "renderMessageError" in script_response.text
     assert "providerErrorUserMessage" in script_response.text
@@ -76,6 +84,8 @@ def test_static_app_serves_assets() -> None:
     assert ".admin-panel" in style_response.text
     assert ".admin-create-form" in style_response.text
     assert ".admin-edit-form" in style_response.text
+    assert ".admin-workspace-actions" in style_response.text
+    assert ".admin-workspace.archived" in style_response.text
     assert ".admin-filter-form" in style_response.text
     assert ".admin-export-actions" in style_response.text
     assert ".admin-pagination" in style_response.text
