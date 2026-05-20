@@ -56,6 +56,11 @@ class TokenCountingEmbeddingClient(FakeEmbeddingClient):
         return embedding
 
 
+class FailingGenerator(FakeGenerator):
+    async def generate(self, prompt: str):
+        raise AssertionError("retrieve_context must not call generate")
+
+
 class StaticQueryRewriter:
     provider_name = "test"
     model_name = "test-rewrite"
@@ -162,6 +167,39 @@ async def test_pipeline_answers_with_sources_and_valid_citations() -> None:
     assert response.usage.embedding_latency_ms >= 0
     assert response.usage.generation_latency_ms >= 0
     assert response.sources[0].chunk_id == str(chunk_id)
+    assert len(session.statements) == 2
+
+
+@pytest.mark.asyncio
+async def test_pipeline_retrieve_context_returns_sources_without_generation() -> None:
+    chunk_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    session = FakeAsyncSession(
+        [
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+        ]
+    )
+    pipeline = RagPipeline(
+        session=session,  # type: ignore[arg-type]
+        settings=make_settings(),
+        embedding_client=FakeEmbeddingClient(
+            dimension=1536,
+            model_name="test-fake-embedding",
+        ),
+        reranker=NoOpReranker(),
+        generator=FailingGenerator(model_name="test-fake-llm"),
+    )
+
+    retrieved = await pipeline.retrieve_context(
+        ChatPipelineRequest(question="How can I debug citations?", rerank_top_n=1)
+    )
+
+    assert retrieved.refusal is None
+    assert retrieved.sources[0].chunk_id == str(chunk_id)
+    assert "FlashAttention reduces memory traffic" in retrieved.context
+    assert retrieved.retrieval.mode == "hybrid_rrf_rerank"
+    assert retrieved.retrieval.used_count == 1
     assert len(session.statements) == 2
 
 

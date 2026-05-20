@@ -1,5 +1,5 @@
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 
 from pydantic import BaseModel, Field, field_validator
@@ -31,6 +31,7 @@ from backend.app.rag.refusal import (
     should_refuse_question,
 )
 from backend.app.rag.reranking import Reranker, build_reranker
+from backend.app.rag.retrieval_models import RetrievedChunk
 from backend.app.rag.sparse_retrieval import SparseRetriever
 from backend.app.rag.vector_retrieval import VectorRetriever
 
@@ -110,6 +111,13 @@ class ChatPipelineResponse(BaseModel):
     retrieval: RetrievalInfo
     usage: UsageInfo
     citation_valid: bool | None
+    refusal: RefusalInfo | None = None
+
+
+class RagRetrievalContext(BaseModel):
+    sources: list[Source]
+    context: str
+    retrieval: RetrievalInfo
     refusal: RefusalInfo | None = None
 
 
@@ -349,6 +357,170 @@ class RagPipeline:
             refusal=None,
         )
 
+    async def retrieve_context(
+        self,
+        request: ChatPipelineRequest,
+    ) -> RagRetrievalContext:
+        vector_top_k = request.vector_top_k or self.settings.vector_top_k
+        sparse_top_k = request.sparse_top_k or self.settings.sparse_top_k
+        fused_top_k = request.fused_top_k or self.settings.fused_top_k
+        rerank_top_n = request.rerank_top_n or self.settings.rerank_top_n
+        metadata_filter = request.metadata_filter
+
+        with trace_span(
+            "rag.question_guard",
+            {"question_length": len(request.question)},
+        ):
+            question_refusal = should_refuse_question(request.question)
+        if question_refusal is not None:
+            return RagRetrievalContext(
+                sources=[],
+                context="",
+                retrieval=build_retrieval_info(
+                    mode="question_guard",
+                    vector_top_k=vector_top_k,
+                    sparse_top_k=sparse_top_k,
+                    fused_count=0,
+                    used_count=0,
+                    top_score=None,
+                    metadata_filter=metadata_filter,
+                ),
+                refusal=question_refusal,
+            )
+
+        with trace_span(
+            "rag.query_rewrite",
+            {
+                "provider": self.query_rewriter.provider_name,
+                "model": self.query_rewriter.model_name,
+                "history_turn_count": len(request.chat_history),
+                "metadata_filter_keys": sorted(metadata_filter),
+            },
+        ):
+            query_rewrite = await self.query_rewriter.rewrite(
+                question=request.question,
+                metadata_filter=metadata_filter,
+                chat_history=request.chat_history,
+            )
+            retrieval_query = query_rewrite.rewritten_query
+
+        with trace_span(
+            "rag.embedding",
+            {
+                "provider": self.embedding_client.provider_name,
+                "model": self.embedding_client.model_name,
+                "query_rewritten": query_rewrite.rewritten,
+            },
+        ):
+            query_embedding = await self.embedding_client.embed_query(retrieval_query)
+
+        with trace_span(
+            "rag.vector_retrieval",
+            {
+                "workspace_id": request.workspace_id,
+                "top_k": vector_top_k,
+                "metadata_filter_keys": sorted(metadata_filter),
+            },
+        ):
+            vector_results = await VectorRetriever(self.session).retrieve(
+                query_embedding=query_embedding,
+                top_k=vector_top_k,
+                workspace_id=request.workspace_id,
+                metadata_filter=metadata_filter,
+            )
+
+        with trace_span(
+            "rag.sparse_retrieval",
+            {
+                "workspace_id": request.workspace_id,
+                "top_k": sparse_top_k,
+                "metadata_filter_keys": sorted(metadata_filter),
+            },
+        ):
+            sparse_results = await SparseRetriever(self.session).retrieve(
+                query=retrieval_query,
+                top_k=sparse_top_k,
+                workspace_id=request.workspace_id,
+                metadata_filter=metadata_filter,
+            )
+
+        with trace_span(
+            "rag.fusion",
+            {
+                "vector_count": len(vector_results),
+                "sparse_count": len(sparse_results),
+                "top_n": fused_top_k,
+            },
+        ):
+            fused_results = reciprocal_rank_fusion(
+                [vector_results, sparse_results],
+                k=self.settings.rrf_k,
+                top_n=fused_top_k,
+            )
+
+        with trace_span(
+            "rag.retrieval_guard",
+            {
+                "fused_count": len(fused_results),
+                "threshold": self.settings.refusal_score_threshold,
+            },
+        ):
+            refusal = should_refuse(
+                fused_results,
+                threshold=self.settings.refusal_score_threshold,
+            )
+        if refusal is not None:
+            return RagRetrievalContext(
+                sources=[],
+                context="",
+                retrieval=build_retrieval_info(
+                    mode="hybrid_rrf",
+                    vector_top_k=vector_top_k,
+                    sparse_top_k=sparse_top_k,
+                    fused_count=len(fused_results),
+                    used_count=0,
+                    top_score=refusal.top_score,
+                    metadata_filter=metadata_filter,
+                    query_rewrite=query_rewrite,
+                ),
+                refusal=refusal,
+            )
+
+        with trace_span(
+            "rag.rerank",
+            {
+                "enabled": request.rerank,
+                "provider": self.reranker.provider_name,
+                "input_count": len(fused_results),
+                "top_n": rerank_top_n,
+            },
+        ):
+            used_chunks = (
+                await self.reranker.rerank(
+                    query=retrieval_query,
+                    chunks=fused_results,
+                    top_n=rerank_top_n,
+                )
+                if request.rerank
+                else fused_results[:rerank_top_n]
+            )
+
+        return RagRetrievalContext(
+            sources=build_sources(used_chunks),
+            context=build_retrieval_context(used_chunks),
+            retrieval=build_retrieval_info(
+                mode="hybrid_rrf_rerank" if request.rerank else "hybrid_rrf",
+                vector_top_k=vector_top_k,
+                sparse_top_k=sparse_top_k,
+                fused_count=len(fused_results),
+                used_count=len(used_chunks),
+                top_score=fused_results[0].score if fused_results else None,
+                metadata_filter=metadata_filter,
+                query_rewrite=query_rewrite,
+            ),
+            refusal=None,
+        )
+
     async def stream_answer(
         self,
         request: ChatPipelineRequest,
@@ -585,6 +757,16 @@ class RagPipeline:
             refusal=None,
         )
         yield ChatPipelineStreamEvent(event_type="completed", response=response)
+
+
+def build_retrieval_context(chunks: Sequence[RetrievedChunk]) -> str:
+    context_blocks = []
+    for index, chunk in enumerate(chunks, start=1):
+        heading = f"[{index}] {chunk.title}"
+        if chunk.section_title:
+            heading = f"{heading} - {chunk.section_title}"
+        context_blocks.append(f"{heading}\n{chunk.text.strip()}")
+    return "\n\n".join(context_blocks)
 
 
 def build_retrieval_info(

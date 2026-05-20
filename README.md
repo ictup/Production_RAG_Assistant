@@ -54,7 +54,8 @@ validated release gates.
 ## What Is Included
 
 - Agentic RAG support workflow foundation with support ticket schemas,
-  rule-based classification, risk checks, MCP-style tool specs, and a
+  rule-based classification, risk checks, MCP-style tool specs, a
+  `rag_search_tool` backed by the existing RAG retriever, and a
   `/agent/support-triage` API skeleton.
 - FastAPI API for chat, streaming chat, documents, workspaces, sessions, export
   jobs, health, and metrics.
@@ -201,7 +202,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `634 passed`.
+Current local baseline: `637 passed`.
 
 ## Configuration Model
 

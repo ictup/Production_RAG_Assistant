@@ -63,6 +63,8 @@ class AgentTriageResponse(BaseModel):
     draft_answer: str | None = None
     reason: str | None = None
     sources: list[dict[str, Any]] = Field(default_factory=list)
+    retrieval_context: str | None = None
+    retrieval: dict[str, Any] = Field(default_factory=dict)
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     metrics: dict[str, Any] = Field(default_factory=dict)
     trace_id: str | None = None
@@ -84,4 +86,3 @@ class AgentApprovalDecisionRequest(BaseModel):
         if not value:
             raise ValueError("human_feedback must not be blank")
         return value
-

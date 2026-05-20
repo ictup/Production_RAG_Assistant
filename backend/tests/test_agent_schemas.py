@@ -43,6 +43,8 @@ def test_agent_triage_response_defaults_to_empty_collections() -> None:
 
     assert response.approval_required is False
     assert response.sources == []
+    assert response.retrieval_context is None
+    assert response.retrieval == {}
     assert response.tool_calls == []
     assert response.metrics == {}
 
@@ -50,4 +52,3 @@ def test_agent_triage_response_defaults_to_empty_collections() -> None:
 def test_agent_approval_decision_rejects_blank_feedback() -> None:
     with pytest.raises(ValidationError):
         AgentApprovalDecisionRequest(decision="rejected", human_feedback=" ")
-
