@@ -44,6 +44,18 @@ class UpdateWorkspaceRequest(BaseModel):
         return value or None
 
 
+class ArchiveWorkspaceRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("reason")
+    @classmethod
+    def optional_reason_must_be_trimmed(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
 class WorkspaceItem(BaseModel):
     id: str
     name: str | None
@@ -51,6 +63,8 @@ class WorkspaceItem(BaseModel):
     metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    archived_at: datetime | None
+    archived_reason: str | None
 
     @classmethod
     def from_model(cls, workspace: Workspace) -> "WorkspaceItem":
@@ -61,6 +75,8 @@ class WorkspaceItem(BaseModel):
             metadata=dict(workspace.metadata_),
             created_at=workspace.created_at,
             updated_at=workspace.updated_at,
+            archived_at=workspace.archived_at,
+            archived_reason=workspace.archived_reason,
         )
 
 

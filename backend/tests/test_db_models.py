@@ -26,10 +26,13 @@ def test_workspace_metadata_column_uses_safe_python_attribute_name() -> None:
     assert Workspace.__table__.c["metadata"] is Workspace.metadata_.property.columns[0]
 
 
-def test_workspace_has_updated_at_index() -> None:
+def test_workspace_has_lifecycle_columns_and_indexes() -> None:
     index_names = {index.name for index in Workspace.__table__.indexes}
 
+    assert Workspace.__table__.c.archived_at.nullable is True
+    assert Workspace.__table__.c.archived_reason.nullable is True
     assert "workspaces_updated_at_idx" in index_names
+    assert "workspaces_archived_at_idx" in index_names
 
 
 def test_workspace_scoped_tables_reference_workspace_registry() -> None:

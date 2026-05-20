@@ -13,6 +13,8 @@ real provider key is available.
 
 - FastAPI API for chat, streaming chat, documents, workspaces, sessions,
   health, and metrics.
+- Workspace management API with create, update, list, detail, soft archive,
+  and restore operations.
 - Postgres + pgvector schema with Alembic migrations.
 - Markdown ingestion, chunking, content hashing, fake embeddings, OpenAI
   embeddings, and reindexing.
@@ -148,7 +150,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `461 passed`.
+Current local baseline: `473 passed`.
 
 ## Configuration Model
 
@@ -217,6 +219,18 @@ curl.exe -X POST http://127.0.0.1:8000/chat/sessions `
   -H "Content-Type: application/json" `
   -H "X-Workspace-ID: public" `
   -d "{\"title\":\"LLM systems\"}"
+```
+
+Archive and restore a workspace:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/archive `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -d "{\"reason\":\"temporary tenant cleanup\"}"
+
+curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/restore `
+  -H "Authorization: Bearer dev-key"
 ```
 
 ## Validation Checklist

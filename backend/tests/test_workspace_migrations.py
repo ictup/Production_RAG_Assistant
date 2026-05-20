@@ -1,7 +1,12 @@
+import re
 from pathlib import Path
 
+MIGRATIONS_DIR = Path("backend/app/db/migrations/versions")
 MIGRATION_PATH = Path(
     "backend/app/db/migrations/versions/0007_add_workspace_foreign_keys.py"
+)
+ARCHIVE_MIGRATION_PATH = Path(
+    "backend/app/db/migrations/versions/0008_add_workspace_archive_fields.py"
 )
 
 
@@ -29,3 +34,29 @@ def test_workspace_foreign_key_migration_adds_all_workspace_constraints() -> Non
 
     assert 'ondelete="RESTRICT"' in migration
     assert 'onupdate="CASCADE"' in migration
+
+
+def test_workspace_archive_migration_adds_soft_archive_fields() -> None:
+    migration = ARCHIVE_MIGRATION_PATH.read_text(encoding="utf-8")
+
+    assert 'revision: str = "0008_workspace_archive"' in migration
+    assert 'down_revision: str | None = "0007_add_workspace_foreign_keys"' in migration
+    assert '"archived_at"' in migration
+    assert '"archived_reason"' in migration
+    assert "workspaces_archived_at_idx" in migration
+
+
+def test_alembic_revision_ids_fit_current_version_column() -> None:
+    for migration_path in MIGRATIONS_DIR.glob("*.py"):
+        if migration_path.name == "__init__.py":
+            continue
+
+        migration = migration_path.read_text(encoding="utf-8")
+        revision_match = re.search(
+            r'^revision: str = "([^"]+)"',
+            migration,
+            re.MULTILINE,
+        )
+
+        assert revision_match is not None, f"{migration_path} must define revision"
+        assert len(revision_match.group(1)) <= 32

@@ -12,6 +12,7 @@ from backend.app.db.models import (
     Workspace,
 )
 from backend.app.db.repositories import (
+    ArchiveWorkspaceInput,
     ChatLogRepository,
     ChatSessionRepository,
     CreateChatLogInput,
@@ -352,6 +353,70 @@ async def test_update_workspace_rejects_blank_id() -> None:
 
     with pytest.raises(ValueError, match="workspace id"):
         await repository.update_workspace(UpdateWorkspaceInput(id="   "))
+
+
+@pytest.mark.asyncio
+async def test_archive_workspace_sets_archive_fields() -> None:
+    workspace = make_workspace_model()
+    session = FakeAsyncSession(scalar_result=workspace)
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.archive_workspace(
+        ArchiveWorkspaceInput(id=" tenant-a ", reason=" Retired tenant "),
+        commit=True,
+    )
+
+    assert result == workspace
+    assert workspace.archived_at is not None
+    assert workspace.archived_reason == "Retired tenant"
+    assert session.flushed is True
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_archive_workspace_returns_none_for_missing_workspace() -> None:
+    session = FakeAsyncSession(scalar_result=None)
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.archive_workspace(
+        ArchiveWorkspaceInput(id="tenant-a", reason="Retired tenant")
+    )
+
+    assert result is None
+    assert session.flushed is False
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_restore_workspace_clears_archive_fields() -> None:
+    workspace = make_workspace_model()
+    workspace.archived_at = datetime(2026, 5, 20, 8, 0, tzinfo=UTC)
+    workspace.archived_reason = "Retired tenant"
+    session = FakeAsyncSession(scalar_result=workspace)
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.restore_workspace(
+        workspace_id=" tenant-a ",
+        commit=True,
+    )
+
+    assert result == workspace
+    assert workspace.archived_at is None
+    assert workspace.archived_reason is None
+    assert session.flushed is True
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_restore_workspace_returns_none_for_missing_workspace() -> None:
+    session = FakeAsyncSession(scalar_result=None)
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.restore_workspace(workspace_id="tenant-a")
+
+    assert result is None
+    assert session.flushed is False
+    assert session.committed is False
 
 
 @pytest.mark.asyncio

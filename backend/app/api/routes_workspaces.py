@@ -5,11 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
 from backend.app.api.workspace_validation import get_workspace_repository
 from backend.app.db.repositories import (
+    ArchiveWorkspaceInput,
     CreateWorkspaceInput,
     UpdateWorkspaceInput,
     WorkspaceRepository,
 )
 from backend.app.schemas.workspaces import (
+    ArchiveWorkspaceRequest,
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
     UpdateWorkspaceRequest,
@@ -107,3 +109,45 @@ async def update_workspace(
             detail="workspace not found",
         )
     return WorkspaceResponse.from_model(updated_workspace)
+
+
+@router.post("/workspaces/{workspace_id}/archive", response_model=WorkspaceResponse)
+async def archive_workspace(
+    workspace_id: str,
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
+    repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
+    request: ArchiveWorkspaceRequest | None = None,
+) -> WorkspaceResponse:
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
+    archived_workspace = await repository.archive_workspace(
+        ArchiveWorkspaceInput(
+            id=normalized_workspace_id,
+            reason=request.reason if request is not None else None,
+        ),
+        commit=True,
+    )
+    if archived_workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="workspace not found",
+        )
+    return WorkspaceResponse.from_model(archived_workspace)
+
+
+@router.post("/workspaces/{workspace_id}/restore", response_model=WorkspaceResponse)
+async def restore_workspace(
+    workspace_id: str,
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
+    repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
+) -> WorkspaceResponse:
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
+    restored_workspace = await repository.restore_workspace(
+        workspace_id=normalized_workspace_id,
+        commit=True,
+    )
+    if restored_workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="workspace not found",
+        )
+    return WorkspaceResponse.from_model(restored_workspace)

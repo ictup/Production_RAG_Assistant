@@ -73,6 +73,8 @@ docs/EVAL_TRENDS.md
 - chat session 历史日志接口：`GET /chat/sessions/{session_id}/logs`
 - workspace 创建接口：`POST /workspaces`
 - workspace 更新接口：`PATCH /workspaces/{workspace_id}`
+- workspace 软归档接口：`POST /workspaces/{workspace_id}/archive`
+- workspace 恢复接口：`POST /workspaces/{workspace_id}/restore`
 - workspace 列表接口：`GET /workspaces`
 - workspace 详情接口：`GET /workspaces/{workspace_id}`
 - 文档上传接口：`POST /documents`
@@ -102,7 +104,11 @@ docs/EVAL_TRENDS.md
   - `0003_create_chat_logs.py`
   - `0004_create_chat_sessions.py`
   - `0005_enable_pg_stat_statements.py`
+  - `0006_create_workspaces.py`
+  - `0007_add_workspace_foreign_keys.py`
+  - `0008_add_workspace_archive_fields.py`
 - 文档表、chunk 表、chat session 表、chat log 表
+- workspace 表，包含 `archived_at` 和 `archived_reason` 软归档字段
 - `pg_stat_statements` 扩展和 Compose 慢查询日志配置
 - async SQLAlchemy session
 - repository 层封装文档 ingest 和聊天日志写入/查询
@@ -555,6 +561,22 @@ curl.exe http://127.0.0.1:8000/workspaces/tenant-a `
   -H "Authorization: Bearer dev-key"
 ```
 
+软归档 workspace：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/archive `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -d "{\"reason\":\"temporary tenant cleanup\"}"
+```
+
+恢复 workspace：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/restore `
+  -H "Authorization: Bearer dev-key"
+```
+
 如果 `API_KEY_WORKSPACE_ACCESS` 限制了当前 API key，`GET /workspaces` 只返回该 key 可访问的 workspace；访问未授权 workspace 会返回 `403`。
 
 ### Chat
@@ -821,7 +843,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-461 passed
+473 passed
 ```
 
 ### Pipeline Smoke
@@ -1164,6 +1186,7 @@ Completed: 2026-05-20T09:51:56Z
 - chat session 表和 `chat_logs.session_id` 迁移已完成。
 - chat session repository 和基础 API 已完成：`POST /chat/sessions`、`GET /chat/sessions`、`GET /chat/sessions/{session_id}`。
 - workspace registry 表、repository 和基础 API 已完成：`POST /workspaces`、`GET /workspaces`、`GET /workspaces/{workspace_id}`。
+- workspace 更新和软归档 API 已完成：`PATCH /workspaces/{workspace_id}`、`POST /workspaces/{workspace_id}/archive`、`POST /workspaces/{workspace_id}/restore`。
 - documents/chat sessions/chat logs 已通过 workspace 外键收紧；写入路径会先校验 workspace 是否存在。
 - `/chat` 已支持可选 `session_id`，并会把 chat log 挂到对应会话。
 - conversation history API 已完成：`GET /chat/sessions/{session_id}/logs`。
@@ -1179,10 +1202,11 @@ Completed: 2026-05-20T09:51:56Z
 - 管理后台基础版已完成：右侧 Admin overview 可刷新可访问 workspace 列表和当前 workspace 最近 chat logs，并可从 workspace 列表切换当前 workspace。
 - workspace 管理操作基础版已完成：Admin overview 可调用 `POST /workspaces` 创建 workspace，成功后自动切换当前 workspace 并刷新会话、文档和管理概览。
 - workspace 编辑基础版已完成：`PATCH /workspaces/{workspace_id}` 可更新 name、description、metadata，Admin overview 可编辑当前 workspace。
+- workspace 软归档 API 已完成，但 Admin overview 还没有归档/恢复按钮；下一步应把 API 接入 UI。
 - chat log 审计过滤基础版已完成：`GET /chat/logs` 支持 `offset`、`session_id`、`request_id`、`refusal_only`、`citation_valid`，Admin overview 支持对应筛选和 Previous/Next 翻页。
 - chat log 审计导出基础版已完成：`GET /chat/logs/export` 支持同一组过滤参数，可导出 JSONL 或 CSV，Admin overview 可按当前过滤条件触发下载。
 - chat log 审计详情基础版已完成：每条最近日志可展开查看 session、request、citation、sources、refusal、retrieval、query rewrite、metadata filter、usage 和 cost。
-- 完整管理后台仍未完成：还缺少用户/角色/组织管理、workspace 删除/归档、导出任务异步化/大文件存储、批量运维操作和权限分层 UI。
+- 完整管理后台仍未完成：还缺少用户/角色/组织管理、workspace 归档/恢复 UI、导出任务异步化/大文件存储、批量运维操作和权限分层 UI。
 
 ### 生产部署
 
@@ -1288,26 +1312,23 @@ OPENAI_API_KEY
 11. workspace 存在性校验和外键收紧。已完成。
 12. provider 成本估算基础版。已完成。
 13. 真实 OpenAI reranker。已完成。
+14. workspace 软归档 API。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-remote CI status check for document-management smoke
+workspace archive and restore UI
 ```
 
 原因：
 
-- OpenAI embedding provider 已经过真实 smoke 验证。
-- chunk embedding 已可用 reindex CLI 重建。
-- OpenAI generator 已可单独 smoke。
-- 真实端到端 pipeline smoke 已可通过 provider/model override 运行。
-- OpenAI generator 已可纳入 eval runner。
-- OpenAI provider 已有超时、有限重试和错误分类。
-- OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
-- `.env.example` 已补充真实 OpenAI provider 的本地注释 preset，配置切换路径更清楚。
-- 当前 seed 文档已覆盖 attention、KV cache memory management 和 speculative decoding，RAG eval 已覆盖 metadata filter，document-management smoke 已覆盖 API 状态变更链路。下一步建议确认远端 CI 是否通过包含 document-management smoke 的新 workflow。
+- workspace 软归档字段、迁移、repository 和 API 已完成。
+- 目前 Admin overview 只能创建和编辑 workspace，无法直接触发归档/恢复。
+- 下一步把 `archived_at` / `archived_reason` 展示到 workspace 列表，并给当前 workspace 增加归档/恢复操作。
+
+以下命令是后续需要真实 provider 时的验证入口：
 
 启用 OpenAI embedding 后可以先跑：
 

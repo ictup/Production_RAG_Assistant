@@ -6,6 +6,7 @@ from backend.app.api import routes_workspaces
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.models import Workspace
 from backend.app.db.repositories import (
+    ArchiveWorkspaceInput,
     CreateWorkspaceInput,
     CreateWorkspaceResult,
     UpdateWorkspaceInput,
@@ -35,6 +36,8 @@ class FakeWorkspaceRepository:
         self.detail_workspace = detail_workspace
         self.create_calls: list[tuple[CreateWorkspaceInput, bool]] = []
         self.update_calls: list[tuple[UpdateWorkspaceInput, bool]] = []
+        self.archive_calls: list[tuple[ArchiveWorkspaceInput, bool]] = []
+        self.restore_calls: list[tuple[str, bool]] = []
         self.list_calls: list[tuple[frozenset[str] | None, int, int]] = []
         self.detail_calls: list[str] = []
 
@@ -76,6 +79,32 @@ class FakeWorkspaceRepository:
             self.detail_workspace.description = workspace_input.description
         if workspace_input.update_metadata:
             self.detail_workspace.metadata_ = dict(workspace_input.metadata or {})
+        return self.detail_workspace
+
+    async def archive_workspace(
+        self,
+        workspace_input: ArchiveWorkspaceInput,
+        *,
+        commit: bool = False,
+    ) -> Workspace | None:
+        self.archive_calls.append((workspace_input, commit))
+        if self.detail_workspace is None:
+            return None
+        self.detail_workspace.archived_at = datetime(2026, 5, 20, 8, 0, tzinfo=UTC)
+        self.detail_workspace.archived_reason = workspace_input.reason
+        return self.detail_workspace
+
+    async def restore_workspace(
+        self,
+        *,
+        workspace_id: str,
+        commit: bool = False,
+    ) -> Workspace | None:
+        self.restore_calls.append((workspace_id, commit))
+        if self.detail_workspace is None:
+            return None
+        self.detail_workspace.archived_at = None
+        self.detail_workspace.archived_reason = None
         return self.detail_workspace
 
 
@@ -127,6 +156,8 @@ def test_create_workspace_route_creates_workspace() -> None:
     assert commit is True
     assert response.json()["created"] is True
     assert response.json()["workspace"]["id"] == "tenant-a"
+    assert response.json()["workspace"]["archived_at"] is None
+    assert response.json()["workspace"]["archived_reason"] is None
 
 
 def test_create_workspace_route_returns_200_for_existing_workspace() -> None:
@@ -342,6 +373,102 @@ def test_update_workspace_route_rejects_forbidden_workspace() -> None:
     assert fake_repository.update_calls == []
 
 
+def test_archive_workspace_route_archives_workspace() -> None:
+    fake_repository = FakeWorkspaceRepository(detail_workspace=make_workspace_model())
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/tenant-a/archive",
+        headers=AUTH_HEADERS,
+        json={"reason": " Retired tenant "},
+    )
+
+    assert response.status_code == 200
+    workspace_input, commit = fake_repository.archive_calls[0]
+    assert workspace_input.id == "tenant-a"
+    assert workspace_input.reason == "Retired tenant"
+    assert commit is True
+    body = response.json()
+    assert body["workspace"]["archived_at"] == "2026-05-20T08:00:00Z"
+    assert body["workspace"]["archived_reason"] == "Retired tenant"
+
+
+def test_archive_workspace_route_accepts_empty_body() -> None:
+    fake_repository = FakeWorkspaceRepository(detail_workspace=make_workspace_model())
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/tenant-a/archive",
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    workspace_input, _ = fake_repository.archive_calls[0]
+    assert workspace_input.reason is None
+
+
+def test_archive_workspace_route_returns_404_for_missing_workspace() -> None:
+    fake_repository = FakeWorkspaceRepository(detail_workspace=None)
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/tenant-a/archive",
+        headers=AUTH_HEADERS,
+        json={"reason": "Retired tenant"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "workspace not found"}
+    assert fake_repository.archive_calls[0][0].id == "tenant-a"
+
+
+def test_archive_workspace_route_rejects_forbidden_workspace() -> None:
+    fake_repository = FakeWorkspaceRepository(detail_workspace=make_workspace_model())
+    client = build_client(
+        fake_repository,
+        settings=Settings(
+            api_keys="tenant-key",
+            api_key_workspace_access="tenant-key=tenant-a",
+        ),
+    )
+
+    response = client.post(
+        "/workspaces/tenant-b/archive",
+        headers={"Authorization": "Bearer tenant-key"},
+        json={"reason": "Retired tenant"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "workspace access denied"}
+    assert fake_repository.archive_calls == []
+
+
+def test_restore_workspace_route_restores_workspace() -> None:
+    workspace = make_workspace_model()
+    workspace.archived_at = datetime(2026, 5, 20, 8, 0, tzinfo=UTC)
+    workspace.archived_reason = "Retired tenant"
+    fake_repository = FakeWorkspaceRepository(detail_workspace=workspace)
+    client = build_client(fake_repository)
+
+    response = client.post("/workspaces/tenant-a/restore", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    assert fake_repository.restore_calls == [("tenant-a", True)]
+    assert response.json()["workspace"]["archived_at"] is None
+    assert response.json()["workspace"]["archived_reason"] is None
+
+
+def test_restore_workspace_route_returns_404_for_missing_workspace() -> None:
+    fake_repository = FakeWorkspaceRepository(detail_workspace=None)
+    client = build_client(fake_repository)
+
+    response = client.post("/workspaces/tenant-a/restore", headers=AUTH_HEADERS)
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "workspace not found"}
+    assert fake_repository.restore_calls == [("tenant-a", True)]
+
+
 def test_workspaces_routes_require_api_key() -> None:
     fake_repository = FakeWorkspaceRepository()
     client = build_client(fake_repository)
@@ -364,3 +491,5 @@ def test_openapi_exposes_workspace_routes() -> None:
     assert "/workspaces" in paths
     assert "/workspaces/{workspace_id}" in paths
     assert "patch" in paths["/workspaces/{workspace_id}"]
+    assert "/workspaces/{workspace_id}/archive" in paths
+    assert "/workspaces/{workspace_id}/restore" in paths

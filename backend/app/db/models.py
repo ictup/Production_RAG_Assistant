@@ -51,11 +51,17 @@ class Workspace(Base):
         server_default=sql_text("now()"),
         onupdate=sql_text("now()"),
     )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_reason: Mapped[str | None] = mapped_column(Text)
 
 
 workspaces_updated_at_idx = Index(
     "workspaces_updated_at_idx",
     Workspace.updated_at,
+)
+workspaces_archived_at_idx = Index(
+    "workspaces_archived_at_idx",
+    Workspace.archived_at,
 )
 
 

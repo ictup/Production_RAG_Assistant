@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -80,6 +80,12 @@ class UpdateWorkspaceInput:
     update_name: bool = False
     update_description: bool = False
     update_metadata: bool = False
+
+
+@dataclass(frozen=True)
+class ArchiveWorkspaceInput:
+    id: str
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -240,6 +246,48 @@ class WorkspaceRepository:
         if workspace_input.update_metadata:
             workspace.metadata_ = dict(workspace_input.metadata or {})
 
+        await self.session.flush()
+        if commit:
+            await self.session.commit()
+        return workspace
+
+    async def archive_workspace(
+        self,
+        workspace_input: ArchiveWorkspaceInput,
+        *,
+        commit: bool = False,
+    ) -> Workspace | None:
+        workspace_id = workspace_input.id.strip()
+        if not workspace_id:
+            raise ValueError("workspace id must not be blank")
+
+        workspace = await self.get_workspace(workspace_id=workspace_id)
+        if workspace is None:
+            return None
+
+        workspace.archived_at = datetime.now(UTC)
+        workspace.archived_reason = normalize_optional_text(workspace_input.reason)
+        await self.session.flush()
+        if commit:
+            await self.session.commit()
+        return workspace
+
+    async def restore_workspace(
+        self,
+        *,
+        workspace_id: str,
+        commit: bool = False,
+    ) -> Workspace | None:
+        workspace_id = workspace_id.strip()
+        if not workspace_id:
+            raise ValueError("workspace id must not be blank")
+
+        workspace = await self.get_workspace(workspace_id=workspace_id)
+        if workspace is None:
+            return None
+
+        workspace.archived_at = None
+        workspace.archived_reason = None
         await self.session.flush()
         if commit:
             await self.session.commit()
