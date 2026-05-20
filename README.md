@@ -198,7 +198,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `603 passed`.
+Current local baseline: `625 passed`.
 
 ## Configuration Model
 
@@ -420,6 +420,7 @@ The secret scan should only match intentional placeholders, never real keys.
 
 - [Project handoff and quick start](docs/PROJECT_HANDOFF.md)
 - [Portfolio presentation guide](docs/PORTFOLIO_PRESENTATION.md)
+- [Agentic RAG support workflow design](docs/agentic_rag_extension.md)
 - [Configuration and secrets guide](docs/CONFIGURATION.md)
 - [Secret manager mapping](docs/SECRET_MANAGER_MAPPING.md)
 - [Deployment runbook](docs/DEPLOYMENT_RUNBOOK.md)

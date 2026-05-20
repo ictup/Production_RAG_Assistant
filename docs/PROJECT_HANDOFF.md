@@ -76,6 +76,12 @@ docs/DATABASE_OBSERVABILITY.md
 docs/EVAL_TRENDS.md
 ```
 
+当前 Agentic RAG 扩展设计文档：
+
+```text
+docs/agentic_rag_extension.md
+```
+
 ## 1. 当前项目状态
 
 这是一个生产风格的 RAG assistant 后端项目。当前阶段已经完成了可本地运行、可 ingest、可检索、可回答、可记录日志、可评测、可 CI 回归的后端 MVP。
@@ -976,7 +982,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-599 passed
+625 passed
 ```
 
 ### Pipeline Smoke
