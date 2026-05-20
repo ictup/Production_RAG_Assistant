@@ -800,7 +800,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-435 passed
+438 passed
 ```
 
 ### Pipeline Smoke
@@ -1159,7 +1159,7 @@ Repository -> Settings -> Actions -> General
 
 建议步骤：
 
-1. 扩展 README，让它成为项目主页。
+1. 扩展 README，让它成为项目主页。已完成。
 2. 增加 `.env.example` 中真实 provider 的占位配置。
 3. 确认 GitHub Actions 在远端实际运行。
 
@@ -1241,7 +1241,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-README project homepage
+GitHub Actions status check
 ```
 
 原因：
@@ -1253,7 +1253,7 @@ README project homepage
 - OpenAI generator 已可纳入 eval runner。
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
-- 聊天错误恢复基础体验已完成，下一步可以扩展 README，让新机器和新协作者更快理解项目能力、启动方式、验证命令和生产化边界。
+- README 项目主页已完成，下一步可以确认 GitHub Actions 在远端实际运行状态，并把失败日志或通过状态纳入交接记录。
 
 启用 OpenAI embedding 后可以先跑：
 
