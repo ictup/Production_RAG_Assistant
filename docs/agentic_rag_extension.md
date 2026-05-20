@@ -53,6 +53,7 @@ The MVP workflow will use these backend-controlled tools:
 
 | Tool | Purpose | Risk |
 | --- | --- | --- |
+| `classify_ticket_tool` | Classify the incoming support ticket | low |
 | `rag_search_tool` | Search the internal RAG knowledge base | low |
 | `ticket_lookup_tool` | Find similar historical support tickets | low |
 | `draft_response_tool` | Draft a cited support response | medium |
@@ -79,11 +80,22 @@ migration advice, and latency troubleshooting.
 
 ## Planned Next Steps
 
-1. Add the support triage route skeleton under `/agent/support-triage`.
-2. Add the graph runner abstraction, initially without LangGraph.
-3. Implement `rag_search_tool` by reusing the existing RAG pipeline.
-4. Add `support_tickets` and `agent_approvals` database tables.
-5. Add approval API endpoints.
-6. Add agent-specific Prometheus metrics.
-7. Add 30 support eval cases and an agent eval report.
+1. Add the graph runner abstraction, initially without LangGraph.
+2. Implement `rag_search_tool` by reusing the existing RAG pipeline.
+3. Add `support_tickets` and `agent_approvals` database tables.
+4. Add approval API endpoints.
+5. Add agent-specific Prometheus metrics.
+6. Add 30 support eval cases and an agent eval report.
 
+## Step 2 Scope
+
+The second implementation step adds the first public API entrypoint:
+
+```text
+POST /agent/support-triage
+```
+
+The route accepts a `SupportTicketRequest`, enforces API key workspace access,
+runs the current rule-based classification and risk policies, and returns an
+`AgentTriageResponse`. It is still a skeleton: no LangGraph, no historical
+ticket lookup, no RAG search, and no approval table are used yet.

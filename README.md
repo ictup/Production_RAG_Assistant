@@ -53,6 +53,9 @@ validated release gates.
 
 ## What Is Included
 
+- Agentic RAG support workflow foundation with support ticket schemas,
+  rule-based classification, risk checks, MCP-style tool specs, and a
+  `/agent/support-triage` API skeleton.
 - FastAPI API for chat, streaming chat, documents, workspaces, sessions, export
   jobs, health, and metrics.
 - Workspace management API with create, update, list, detail, soft archive,
@@ -198,7 +201,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `625 passed`.
+Current local baseline: `634 passed`.
 
 ## Configuration Model
 
@@ -244,6 +247,19 @@ uv run python -m backend.app.rag.reindex_embeddings --workspace-id public --writ
 ```
 
 ## Common API Calls
+
+Agent support triage skeleton:
+
+```text
+POST /agent/support-triage
+```
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/agent/support-triage `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -d "{\"ticket_id\":\"TICKET-001\",\"customer_message\":\"How can I debug citation validation failures?\",\"workspace_id\":\"public\"}"
+```
 
 Chat:
 

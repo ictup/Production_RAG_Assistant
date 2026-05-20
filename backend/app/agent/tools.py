@@ -52,6 +52,31 @@ RAG_SEARCH_TOOL_SPEC = ToolSpec(
     risk_level="low",
 )
 
+CLASSIFY_TICKET_TOOL_SPEC = ToolSpec(
+    name="classify_ticket_tool",
+    description=(
+        "Classify a support ticket into a controlled category before the "
+        "workflow chooses retrieval, drafting, and approval steps."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "customer_message": {"type": "string"},
+            "priority": {"type": "string"},
+        },
+        "required": ["customer_message"],
+    },
+    output_schema={
+        "type": "object",
+        "properties": {
+            "category": {"type": "string"},
+            "risk_level": {"type": "string"},
+            "matched_terms": {"type": "array"},
+        },
+    },
+    risk_level="low",
+)
+
 TICKET_LOOKUP_TOOL_SPEC = ToolSpec(
     name="ticket_lookup_tool",
     description="Find similar historical support tickets in the same workspace.",
@@ -162,6 +187,7 @@ HUMAN_APPROVAL_TOOL_SPEC = ToolSpec(
 TOOL_REGISTRY: dict[str, ToolSpec] = {
     spec.name: spec
     for spec in (
+        CLASSIFY_TICKET_TOOL_SPEC,
         RAG_SEARCH_TOOL_SPEC,
         TICKET_LOOKUP_TOOL_SPEC,
         DRAFT_RESPONSE_TOOL_SPEC,
@@ -176,4 +202,3 @@ def get_tool_spec(name: str) -> ToolSpec:
         return TOOL_REGISTRY[name]
     except KeyError as exc:
         raise ValueError(f"unknown agent tool: {name}") from exc
-

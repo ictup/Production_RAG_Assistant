@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.api import (
+    routes_agent,
     routes_chat,
     routes_chat_sessions,
     routes_documents,
@@ -41,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     add_cors_middleware(app, settings)
 
     app.include_router(routes_health.router)
+    app.include_router(routes_agent.router)
     app.include_router(routes_workspaces.router)
     app.include_router(routes_chat.router)
     app.include_router(routes_chat_sessions.router)

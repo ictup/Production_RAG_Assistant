@@ -5,6 +5,7 @@ from backend.app.agent.tools import TOOL_REGISTRY, ToolCallRecord, get_tool_spec
 
 def test_tool_registry_contains_only_explicit_agent_tools() -> None:
     assert set(TOOL_REGISTRY) == {
+        "classify_ticket_tool",
         "rag_search_tool",
         "ticket_lookup_tool",
         "draft_response_tool",
@@ -19,6 +20,14 @@ def test_human_approval_tool_is_marked_high_risk() -> None:
     assert spec.risk_level == "high"
     assert spec.requires_approval is True
     assert "approval" in spec.description.lower()
+
+
+def test_classify_ticket_tool_is_registered_low_risk() -> None:
+    spec = get_tool_spec("classify_ticket_tool")
+
+    assert spec.risk_level == "low"
+    assert spec.requires_approval is False
+    assert "customer_message" in spec.input_schema["properties"]
 
 
 def test_get_tool_spec_rejects_unknown_tool() -> None:
@@ -40,4 +49,3 @@ def test_tool_call_record_stores_sanitized_summaries() -> None:
     assert record.output_summary == {"risk_level": "low"}
     assert record.error is None
     assert record.created_at.tzinfo is not None
-

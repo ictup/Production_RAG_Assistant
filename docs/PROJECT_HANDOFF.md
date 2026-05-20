@@ -982,7 +982,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-625 passed
+634 passed
 ```
 
 ### Pipeline Smoke
