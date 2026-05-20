@@ -21,6 +21,10 @@ alerting system.
 | `rag_request_latency_seconds` | Histogram | HTTP request latency by method and path. |
 | `rag_refusals_total` | Counter | RAG refusal count by refusal reason. |
 | `rag_citation_invalid_total` | Counter | Responses that failed citation validation. |
+| `rag_agent_triage_requests_total` | Counter | Agent support triage responses by status, category, risk level, and approval requirement. |
+| `rag_agent_approvals_created_total` | Counter | Pending agent approvals created by category and risk level. |
+| `rag_agent_node_runs_total` | Counter | Agent graph node executions by node name and success status. |
+| `rag_agent_node_latency_seconds` | Histogram | Agent graph node latency by node name. |
 | `rag_provider_latency_seconds` | Histogram | Upstream embedding and generation provider latency. |
 | `rag_provider_tokens_total` | Counter | Upstream provider token usage by provider, model, and token type. |
 | `rag_provider_cost_usd_total` | Counter | Estimated upstream generation token cost by provider and model. |
@@ -65,6 +69,7 @@ The dashboard focuses on the first questions an operator needs to answer:
 - Are upstream providers slow or failing?
 - Are token rates changing unexpectedly?
 - Are refusals or invalid citations increasing?
+- Are agent triage runs creating more human approvals than expected?
 
 The dashboard intentionally uses only metrics already emitted by the API. It
 does not require new runtime services beyond Prometheus and Grafana.
@@ -108,5 +113,7 @@ If `API_PORT` is not `8000`, replace the port in the URL.
 - Invalid citation alerts should be treated as answer quality regressions.
 - Refusal spikes can mean ingestion failed, workspace IDs do not match, or
   embeddings were not reindexed after provider changes.
+- Agent approval spikes can mean new high-risk ticket patterns, policy drift,
+  or a client routing non-support automation requests through support triage.
 - Use `X-Trace-ID` to correlate request logs, provider errors, and trace span
   logs for one user request.

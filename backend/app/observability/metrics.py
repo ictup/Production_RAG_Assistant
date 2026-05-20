@@ -37,6 +37,23 @@ def format_labels(labels: dict[str, str]) -> str:
     )
 
 
+def normalize_metric_label(value: object | None, default: str = "unknown") -> str:
+    if value is None:
+        return default
+    normalized = str(value).strip()
+    return normalized or default
+
+
+def format_bool_label(value: bool) -> str:
+    return "true" if value else "false"
+
+
+def latency_ms_to_seconds(value: object | None) -> float:
+    if not isinstance(value, int | float):
+        return 0.0
+    return max(0.0, float(value) / 1000)
+
+
 class MetricsRegistry:
     def __init__(
         self,
@@ -68,6 +85,18 @@ class MetricsRegistry:
             float
         )
         self._provider_error_counts: dict[tuple[str, str, str], int] = defaultdict(int)
+        self._agent_triage_counts: dict[tuple[str, str, str, str], int] = defaultdict(
+            int
+        )
+        self._agent_approval_created_counts: dict[tuple[str, str], int] = defaultdict(
+            int
+        )
+        self._agent_node_run_counts: dict[tuple[str, str], int] = defaultdict(int)
+        self._agent_node_latency_bucket_counts: dict[str, list[int]] = defaultdict(
+            lambda: [0] * len(self.latency_buckets)
+        )
+        self._agent_node_latency_counts: dict[str, int] = defaultdict(int)
+        self._agent_node_latency_sums: dict[str, float] = defaultdict(float)
 
     def reset(self) -> None:
         with self._lock:
@@ -83,6 +112,12 @@ class MetricsRegistry:
             self._provider_token_counts.clear()
             self._provider_cost_totals_usd.clear()
             self._provider_error_counts.clear()
+            self._agent_triage_counts.clear()
+            self._agent_approval_created_counts.clear()
+            self._agent_node_run_counts.clear()
+            self._agent_node_latency_bucket_counts.clear()
+            self._agent_node_latency_counts.clear()
+            self._agent_node_latency_sums.clear()
 
     def observe_http_request(
         self,
@@ -174,6 +209,50 @@ class MetricsRegistry:
         with self._lock:
             self._provider_cost_totals_usd[(provider, model)] += cost_usd
 
+    def observe_agent_triage_response(
+        self,
+        *,
+        status: str,
+        category: str | None,
+        risk_level: str | None,
+        approval_required: bool,
+        approval_created: bool,
+        node_runs: Iterable[dict[str, object]],
+    ) -> None:
+        category_label = normalize_metric_label(category)
+        risk_label = normalize_metric_label(risk_level)
+        approval_required_label = format_bool_label(approval_required)
+
+        with self._lock:
+            self._agent_triage_counts[
+                (
+                    normalize_metric_label(status),
+                    category_label,
+                    risk_label,
+                    approval_required_label,
+                )
+            ] += 1
+            if approval_created:
+                self._agent_approval_created_counts[
+                    (category_label, risk_label)
+                ] += 1
+
+            for node_run in node_runs:
+                node_name = normalize_metric_label(node_run.get("node_name"))
+                success = format_bool_label(node_run.get("success") is True)
+                latency_seconds = latency_ms_to_seconds(
+                    node_run.get("latency_ms"),
+                )
+
+                self._agent_node_run_counts[(node_name, success)] += 1
+                self._agent_node_latency_counts[node_name] += 1
+                self._agent_node_latency_sums[node_name] += latency_seconds
+
+                bucket_counts = self._agent_node_latency_bucket_counts[node_name]
+                for index, upper_bound in enumerate(self.latency_buckets):
+                    if latency_seconds <= upper_bound:
+                        bucket_counts[index] += 1
+
     def render_prometheus(self) -> str:
         with self._lock:
             request_counts = dict(self._request_counts)
@@ -194,6 +273,17 @@ class MetricsRegistry:
             provider_token_counts = dict(self._provider_token_counts)
             provider_cost_totals_usd = dict(self._provider_cost_totals_usd)
             provider_error_counts = dict(self._provider_error_counts)
+            agent_triage_counts = dict(self._agent_triage_counts)
+            agent_approval_created_counts = dict(
+                self._agent_approval_created_counts
+            )
+            agent_node_run_counts = dict(self._agent_node_run_counts)
+            agent_node_latency_bucket_counts = {
+                key: list(value)
+                for key, value in self._agent_node_latency_bucket_counts.items()
+            }
+            agent_node_latency_counts = dict(self._agent_node_latency_counts)
+            agent_node_latency_sums = dict(self._agent_node_latency_sums)
 
         lines = [
             "# HELP rag_requests_total Total HTTP requests.",
@@ -275,6 +365,108 @@ class MetricsRegistry:
                 f"rag_citation_invalid_total {rag_citation_invalid_total}",
             ]
         )
+        lines.extend(
+            [
+                "# HELP rag_agent_triage_requests_total Total agent support "
+                "triage responses.",
+                "# TYPE rag_agent_triage_requests_total counter",
+            ]
+        )
+        for status, category, risk_level, approval_required in sorted(
+            agent_triage_counts
+        ):
+            labels = format_labels(
+                {
+                    "status": status,
+                    "category": category,
+                    "risk_level": risk_level,
+                    "approval_required": approval_required,
+                }
+            )
+            triage_count = agent_triage_counts[
+                (status, category, risk_level, approval_required)
+            ]
+            lines.append(
+                f"rag_agent_triage_requests_total{{{labels}}} "
+                f"{triage_count}"
+            )
+
+        lines.extend(
+            [
+                "# HELP rag_agent_approvals_created_total Total pending agent "
+                "approvals created.",
+                "# TYPE rag_agent_approvals_created_total counter",
+            ]
+        )
+        for category, risk_level in sorted(agent_approval_created_counts):
+            labels = format_labels(
+                {
+                    "category": category,
+                    "risk_level": risk_level,
+                }
+            )
+            lines.append(
+                f"rag_agent_approvals_created_total{{{labels}}} "
+                f"{agent_approval_created_counts[(category, risk_level)]}"
+            )
+
+        lines.extend(
+            [
+                "# HELP rag_agent_node_runs_total Total agent graph node runs.",
+                "# TYPE rag_agent_node_runs_total counter",
+            ]
+        )
+        for node_name, success in sorted(agent_node_run_counts):
+            labels = format_labels(
+                {
+                    "node_name": node_name,
+                    "success": success,
+                }
+            )
+            lines.append(
+                f"rag_agent_node_runs_total{{{labels}}} "
+                f"{agent_node_run_counts[(node_name, success)]}"
+            )
+
+        lines.extend(
+            [
+                "# HELP rag_agent_node_latency_seconds Agent graph node latency.",
+                "# TYPE rag_agent_node_latency_seconds histogram",
+            ]
+        )
+        for node_name in sorted(agent_node_latency_counts):
+            base_labels = {"node_name": node_name}
+            for upper_bound, count in zip(
+                self.latency_buckets,
+                agent_node_latency_bucket_counts[node_name],
+                strict=True,
+            ):
+                labels = format_labels(
+                    {
+                        **base_labels,
+                        "le": format_metric_value(upper_bound),
+                    }
+                )
+                lines.append(
+                    f"rag_agent_node_latency_seconds_bucket{{{labels}}} "
+                    f"{count}"
+                )
+
+            inf_labels = format_labels({**base_labels, "le": "+Inf"})
+            lines.append(
+                "rag_agent_node_latency_seconds_bucket"
+                f"{{{inf_labels}}} {agent_node_latency_counts[node_name]}"
+            )
+            node_labels = format_labels(base_labels)
+            lines.append(
+                f"rag_agent_node_latency_seconds_count{{{node_labels}}} "
+                f"{agent_node_latency_counts[node_name]}"
+            )
+            lines.append(
+                f"rag_agent_node_latency_seconds_sum{{{node_labels}}} "
+                f"{format_metric_value(agent_node_latency_sums[node_name])}"
+            )
+
         lines.extend(
             [
                 "# HELP rag_provider_latency_seconds Upstream provider operation "

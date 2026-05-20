@@ -139,6 +139,8 @@ docs/agentic_rag_extension.md
 - Agentic RAG 高风险审批写入：`POST /agent/support-triage` 在返回
   `approval_required` 时会自动创建 pending `agent_approvals` 记录并返回
   `approval_id`
+- Agentic RAG Prometheus 指标：`POST /agent/support-triage` 会记录 triage
+  结果、审批创建数、节点执行次数和节点延迟
 - API key 鉴权：`Authorization: Bearer dev-key`
 - workspace 隔离头：`X-Workspace-ID`
 - API key workspace 访问控制：`API_KEY_WORKSPACE_ACCESS`
@@ -147,7 +149,7 @@ docs/agentic_rag_extension.md
 - 结构化请求日志中间件
 - 结构化 trace/span 日志：`backend.trace`
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
-- HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency/cost 指标
+- HTTP 请求指标、RAG refusal 指标、无效 citation 指标、Agent workflow 指标、provider token/latency/cost 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
 - 异步导出 job 基础模型、API、worker 与下载接口：`export_jobs` 表和 `ExportJobRepository` 已支持 pending/running/succeeded/failed 状态流转，`/exports/jobs` 已支持创建、列表、详情、重试和下载查询，`python -m backend.app.exporting.worker` 可执行一个 pending chat log 导出任务，`python -m backend.app.exporting.worker --loop` 可作为常驻 worker 轮询并落地 JSONL/CSV 文件；worker 会按 `EXPORT_JOB_RUNNING_TIMEOUT_SECONDS` 恢复长时间停留在 running 的任务，并按 `EXPORT_FILE_RETENTION_SECONDS` 清理过期导出文件
 - Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、编辑、归档、恢复、workspace 搜索、分页、状态过滤、当前页批量归档/恢复和跨页匹配批量预览/确认、归档 workspace 写入控件禁用、只读 admin overview、chat log audit filters、chat log async export job creation/poll/download、chat log audit details、workspace operation audit filters 和 workspace operation audit details
@@ -985,6 +987,15 @@ rag_provider_tokens_total{provider="openai",model="gpt-5.4-nano",token_type="inp
 rag_provider_tokens_total{provider="openai",model="gpt-5.4-nano",token_type="output"} 240
 ```
 
+Agent support triage 会暴露 workflow 指标：
+
+```text
+rag_agent_triage_requests_total{status="approval_required",category="data_privacy",risk_level="high",approval_required="true"} 1
+rag_agent_approvals_created_total{category="data_privacy",risk_level="high"} 1
+rag_agent_node_runs_total{node_name="risk_check",success="true"} 1
+rag_agent_node_latency_seconds_count{node_name="risk_check"} 1
+```
+
 ## 7. 常用验证命令
 
 ### Lint
@@ -1002,7 +1013,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-671 passed
+673 passed
 ```
 
 ### Pipeline Smoke

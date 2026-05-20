@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from backend.app.api import routes_agent
 from backend.app.core.config import Settings, get_settings
 from backend.app.main import create_app
+from backend.app.observability.metrics import metrics_registry
 from backend.app.rag.citations import Source
 from backend.app.rag.pipeline import RagRetrievalContext, RetrievalInfo
 
@@ -334,6 +335,38 @@ def test_support_triage_route_returns_approval_required_for_high_risk_ticket() -
     assert approval_input.draft_answer == body["draft_answer"]
     assert approval_input.node_runs[-1]["node_name"] == "risk_check"
     assert create_call["commit"] is True
+
+
+def test_support_triage_route_records_agent_metrics() -> None:
+    metrics_registry.reset()
+    client = build_client()
+
+    response = client.post(
+        "/agent/support-triage",
+        headers=AUTH_HEADERS,
+        json={
+            "ticket_id": "TICKET-1",
+            "customer_message": "How can I debug citation validation failures?",
+        },
+    )
+    metrics_response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert metrics_response.status_code == 200
+    assert (
+        "rag_agent_triage_requests_total"
+        '{status="finalized",category="rag_failure",'
+        'risk_level="low",approval_required="false"} 1'
+        in metrics_response.text
+    )
+    assert (
+        'rag_agent_node_runs_total{node_name="draft_response",success="true"} 1'
+        in metrics_response.text
+    )
+    assert (
+        'rag_agent_node_latency_seconds_count{node_name="risk_check"} 1'
+        in metrics_response.text
+    )
 
 
 def test_support_triage_route_requires_api_key() -> None:

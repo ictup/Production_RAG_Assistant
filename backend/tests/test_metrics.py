@@ -160,6 +160,63 @@ def test_metrics_registry_records_provider_latency_and_tokens() -> None:
     )
 
 
+def test_metrics_registry_records_agent_triage_and_node_metrics() -> None:
+    registry = MetricsRegistry(latency_buckets=(0.01, 0.1))
+
+    registry.observe_agent_triage_response(
+        status="approval_required",
+        category="data_privacy",
+        risk_level="high",
+        approval_required=True,
+        approval_created=True,
+        node_runs=[
+            {
+                "node_name": "classify_ticket",
+                "success": True,
+                "latency_ms": 5,
+            },
+            {
+                "node_name": "risk_check",
+                "success": True,
+                "latency_ms": 12,
+            },
+        ],
+    )
+
+    output = registry.render_prometheus()
+    assert_metric_line(
+        output,
+        "rag_agent_triage_requests_total"
+        '{status="approval_required",category="data_privacy",'
+        'risk_level="high",approval_required="true"} 1',
+    )
+    assert_metric_line(
+        output,
+        "rag_agent_approvals_created_total"
+        '{category="data_privacy",risk_level="high"} 1',
+    )
+    assert_metric_line(
+        output,
+        "rag_agent_node_runs_total"
+        '{node_name="classify_ticket",success="true"} 1',
+    )
+    assert_metric_line(
+        output,
+        "rag_agent_node_latency_seconds_bucket"
+        '{node_name="classify_ticket",le="0.01"} 1',
+    )
+    assert_metric_line(
+        output,
+        "rag_agent_node_latency_seconds_count"
+        '{node_name="risk_check"} 1',
+    )
+    assert_metric_line(
+        output,
+        "rag_agent_node_latency_seconds_sum"
+        '{node_name="risk_check"} 0.012',
+    )
+
+
 def test_metrics_route_returns_prometheus_text() -> None:
     metrics_registry.reset()
     metrics_registry.observe_http_request(

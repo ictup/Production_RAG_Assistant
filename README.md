@@ -37,7 +37,7 @@ experiment.
 | Security and tenancy | API keys, roles, workspace access control, workspace archive write protection, request IDs, and secret-safe config checks |
 | Operations | Dockerfile, production-style Compose stack, export worker, config preflight, deployment runbook, secret manager mapping, and release checklist |
 | Quality system | Deterministic evals, smoke tests, CI, README/docs tests, release notes, and a reproducible validation checklist |
-| Observability | Structured logs, Prometheus metrics, provider latency, token usage, cost estimates, and database observability templates |
+| Observability | Structured logs, Prometheus metrics, Agent workflow metrics, provider latency, token usage, cost estimates, and database observability templates |
 
 ## Release Status
 
@@ -59,7 +59,7 @@ validated release gates.
   `ticket_lookup_tool`, deterministic cited `draft_response_tool`, node-level
   graph runner records, `agent_approvals` persistence, approval API endpoints,
   and a `/agent/support-triage` API that creates pending approvals for
-  high-risk requests.
+  high-risk requests and emits Agent-specific Prometheus metrics.
 - FastAPI API for chat, streaming chat, documents, workspaces, sessions, export
   jobs, health, and metrics.
 - Workspace management API with create, update, list, detail, soft archive,
@@ -205,7 +205,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `671 passed`.
+Current local baseline: `673 passed`.
 
 ## Configuration Model
 

@@ -24,6 +24,7 @@ from backend.app.db.repositories import (
     WorkspaceRepository,
 )
 from backend.app.db.session import get_db_session
+from backend.app.observability.metrics import metrics_registry
 from backend.app.rag.pipeline import RagPipeline
 from backend.app.schemas.agent import (
     AgentApprovalDecisionRequest,
@@ -82,7 +83,7 @@ async def support_triage(
     normalized_request = ticket_request.model_copy(
         update={"workspace_id": workspace_id},
     )
-    return await run_support_triage_skeleton(
+    response = await run_support_triage_skeleton(
         normalized_request,
         rag_pipeline=rag_pipeline,
         support_ticket_repository=support_ticket_repository,
@@ -91,6 +92,15 @@ async def support_triage(
         request_id=get_request_id(raw_request),
         trace_id=get_trace_id(),
     )
+    metrics_registry.observe_agent_triage_response(
+        status=response.status,
+        category=response.category,
+        risk_level=response.risk_level,
+        approval_required=response.approval_required,
+        approval_created=response.metrics.get("approval_created") is True,
+        node_runs=response.node_runs,
+    )
+    return response
 
 
 @router.get("/approvals", response_model=AgentApprovalsResponse)

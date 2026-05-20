@@ -80,8 +80,7 @@ migration advice, and latency troubleshooting.
 
 ## Planned Next Steps
 
-1. Add agent-specific Prometheus metrics.
-2. Add 30 support eval cases and an agent eval report.
+1. Add 30 support eval cases and an agent eval report.
 
 ## Step 2 Scope
 
@@ -205,3 +204,20 @@ When a request requires human approval, the workflow now creates a pending
 ID, actor hash, category, risk reason, customer message, draft answer,
 tool calls, node runs, and request metadata. The API response returns the
 created `approval_id`. Low-risk finalized requests do not create approval rows.
+
+## Step 10 Scope
+
+The tenth implementation step adds Agent-specific Prometheus metrics:
+
+```text
+rag_agent_triage_requests_total
+rag_agent_approvals_created_total
+rag_agent_node_runs_total
+rag_agent_node_latency_seconds
+```
+
+`POST /agent/support-triage` now records triage outcomes, approval creation,
+node execution counts, and node latency histograms after the workflow returns.
+Labels intentionally stay low cardinality: status, category, risk level,
+approval-required boolean, node name, and node success. Run IDs, ticket IDs,
+workspace IDs, request IDs, and actor hashes are not emitted as metric labels.
