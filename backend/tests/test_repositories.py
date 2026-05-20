@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from backend.app.db.models import (
+    AgentApproval,
     ChatLog,
     ChatSession,
     Document,
@@ -15,9 +16,11 @@ from backend.app.db.models import (
     WorkspaceAuditLog,
 )
 from backend.app.db.repositories import (
+    AgentApprovalRepository,
     ArchiveWorkspaceInput,
     ChatLogRepository,
     ChatSessionRepository,
+    CreateAgentApprovalInput,
     CreateChatLogInput,
     CreateChatSessionInput,
     CreateExportJobInput,
@@ -236,6 +239,30 @@ def make_support_ticket_model() -> SupportTicket:
         risk_level="low",
         metadata_={"source": "seed"},
         created_at=datetime(2026, 5, 20, 8, 0, tzinfo=UTC),
+    )
+
+
+def make_agent_approval_model(*, status: str = "pending") -> AgentApproval:
+    return AgentApproval(
+        id=uuid.UUID("77777777-7777-7777-7777-777777777777"),
+        run_id="agent_request-1",
+        ticket_id="TICKET-1",
+        workspace_id="tenant-a",
+        request_id="request-1",
+        actor_hash="a" * 64,
+        status=status,
+        category="data_privacy",
+        risk_level="high",
+        reason="high-risk support request: matched customer prompt",
+        customer_message="Delete all logs containing customer prompts.",
+        draft_answer="This support request requires human review.",
+        tool_calls=[{"tool_name": "risk_check_tool"}],
+        node_runs=[{"node_name": "risk_check"}],
+        human_feedback=None,
+        metadata_={"source": "agent"},
+        created_at=datetime(2026, 5, 20, 8, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 20, 8, 0, tzinfo=UTC),
+        decided_at=None,
     )
 
 
@@ -1096,6 +1123,189 @@ async def test_list_similar_support_tickets_rejects_invalid_inputs() -> None:
             workspace_id="tenant-a",
             limit=0,
         )
+
+
+@pytest.mark.asyncio
+async def test_create_agent_approval_adds_pending_approval() -> None:
+    session = FakeAsyncSession()
+    repository = AgentApprovalRepository(session)  # type: ignore[arg-type]
+
+    approval = await repository.create_agent_approval(
+        CreateAgentApprovalInput(
+            run_id=" agent_request-1 ",
+            ticket_id=" TICKET-1 ",
+            workspace_id=" tenant-a ",
+            request_id=" request-1 ",
+            actor_hash="a" * 64,
+            category=" data_privacy ",
+            risk_level=" high ",
+            reason=" high-risk support request ",
+            customer_message=" Delete customer prompts. ",
+            draft_answer=" Human review required. ",
+            tool_calls=[{"tool_name": "risk_check_tool"}],
+            node_runs=[{"node_name": "risk_check"}],
+            metadata={"source": "agent"},
+        ),
+        commit=True,
+    )
+
+    assert isinstance(approval, AgentApproval)
+    assert approval.run_id == "agent_request-1"
+    assert approval.ticket_id == "TICKET-1"
+    assert approval.workspace_id == "tenant-a"
+    assert approval.request_id == "request-1"
+    assert approval.category == "data_privacy"
+    assert approval.risk_level == "high"
+    assert approval.reason == "high-risk support request"
+    assert approval.customer_message == "Delete customer prompts."
+    assert approval.draft_answer == "Human review required."
+    assert approval.status == "pending"
+    assert approval.tool_calls == [{"tool_name": "risk_check_tool"}]
+    assert approval.node_runs == [{"node_name": "risk_check"}]
+    assert approval.metadata_ == {"source": "agent"}
+    assert session.added == [approval]
+    assert session.flushed is True
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_create_agent_approval_rejects_blank_required_fields() -> None:
+    session = FakeAsyncSession()
+    repository = AgentApprovalRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="run_id"):
+        await repository.create_agent_approval(
+            CreateAgentApprovalInput(
+                run_id=" ",
+                ticket_id="TICKET-1",
+                workspace_id="tenant-a",
+                request_id="request-1",
+                actor_hash="a" * 64,
+                risk_level="high",
+                reason="high-risk request",
+                customer_message="message",
+                draft_answer="draft",
+            )
+        )
+
+    assert session.added == []
+    assert session.flushed is False
+
+
+@pytest.mark.asyncio
+async def test_get_agent_approval_filters_by_id_and_workspace() -> None:
+    approval = make_agent_approval_model()
+    session = FakeAsyncSession(scalar_result=approval)
+    repository = AgentApprovalRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.get_agent_approval(
+        approval_id=approval.id,
+        workspace_id=" tenant-a ",
+    )
+
+    assert result == approval
+    assert session.scalar_statement is not None
+    compiled = str(session.scalar_statement)
+    assert "agent_approvals.id" in compiled
+    assert "agent_approvals.workspace_id" in compiled
+
+
+@pytest.mark.asyncio
+async def test_get_agent_approval_by_run_id_filters_workspace() -> None:
+    approval = make_agent_approval_model()
+    session = FakeAsyncSession(scalar_result=approval)
+    repository = AgentApprovalRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.get_agent_approval_by_run_id(
+        run_id=" agent_request-1 ",
+        workspace_id=" tenant-a ",
+    )
+
+    assert result == approval
+    assert session.scalar_statement is not None
+    compiled = str(session.scalar_statement)
+    assert "agent_approvals.run_id" in compiled
+    assert "agent_approvals.workspace_id" in compiled
+
+
+@pytest.mark.asyncio
+async def test_list_agent_approvals_filters_workspace_and_status() -> None:
+    approval = make_agent_approval_model()
+    session = FakeAsyncSession(scalar_result=1, scalars_result=[approval])
+    repository = AgentApprovalRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.list_agent_approvals(
+        workspace_id=" tenant-a ",
+        status=" pending ",
+        limit=10,
+        offset=5,
+    )
+
+    assert result.total == 1
+    assert result.approvals == [approval]
+    assert session.scalar_statement is not None
+    assert session.scalars_statement is not None
+    compiled = str(session.scalars_statement)
+    assert "agent_approvals.workspace_id" in compiled
+    assert "agent_approvals.status" in compiled
+    assert "ORDER BY agent_approvals.created_at DESC" in compiled
+
+
+@pytest.mark.asyncio
+async def test_list_agent_approvals_rejects_invalid_pagination() -> None:
+    session = FakeAsyncSession()
+    repository = AgentApprovalRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="limit"):
+        await repository.list_agent_approvals(workspace_id="tenant-a", limit=0)
+
+    with pytest.raises(ValueError, match="offset"):
+        await repository.list_agent_approvals(workspace_id="tenant-a", offset=-1)
+
+
+@pytest.mark.asyncio
+async def test_decide_agent_approval_marks_pending_approval_decided() -> None:
+    approval = make_agent_approval_model(status="pending")
+    session = FakeAsyncSession(scalar_result=approval)
+    repository = AgentApprovalRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.decide_agent_approval(
+        approval_id=approval.id,
+        workspace_id="tenant-a",
+        decision=" approved ",
+        human_feedback=" Looks safe. ",
+        commit=True,
+    )
+
+    assert result == approval
+    assert approval.status == "approved"
+    assert approval.human_feedback == "Looks safe."
+    assert approval.decided_at is not None
+    assert approval.updated_at == approval.decided_at
+    assert session.flushed is True
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_decide_agent_approval_rejects_invalid_or_non_pending_state() -> None:
+    approval = make_agent_approval_model(status="approved")
+    session = FakeAsyncSession(scalar_result=approval)
+    repository = AgentApprovalRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="approved or rejected"):
+        await repository.decide_agent_approval(
+            approval_id=approval.id,
+            decision="pending",
+        )
+
+    with pytest.raises(ValueError, match="pending"):
+        await repository.decide_agent_approval(
+            approval_id=approval.id,
+            decision="rejected",
+        )
+
+    assert approval.status == "approved"
+    assert session.flushed is False
 
 
 @pytest.mark.asyncio

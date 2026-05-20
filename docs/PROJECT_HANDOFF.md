@@ -130,6 +130,8 @@ docs/agentic_rag_extension.md
   当前低风险路径会执行分类、风险检查、RAG 检索、历史工单检索和确定性带引用回复草稿生成
 - Agentic RAG 内部编排：当前通过无 LangGraph 依赖的 `AgentGraphRunner`
   顺序执行节点，并在响应中返回 `node_runs` 节点级执行记录
+- Agentic RAG 审批持久化基础：`agent_approvals` 表和
+  `AgentApprovalRepository` 已支持 pending/approved/rejected 状态流转
 - API key 鉴权：`Authorization: Bearer dev-key`
 - workspace 隔离头：`X-Workspace-ID`
 - API key workspace 访问控制：`API_KEY_WORKSPACE_ACCESS`
@@ -158,15 +160,19 @@ docs/agentic_rag_extension.md
   - `0009_create_workspace_audit_logs.py`
   - `0010_create_export_jobs.py`
   - `0011_create_support_tickets.py`
+  - `0012_create_agent_approvals.py`
 - 文档表、chunk 表、chat session 表、chat log 表
 - workspace 表，包含 `archived_at` 和 `archived_reason` 软归档字段
 - workspace 操作审计表 `workspace_audit_logs`，记录 request id、API key hash、action、workspace ids 和操作 metadata
 - 异步导出任务表 `export_jobs`，记录 workspace、request id、actor hash、export type、format、filters、status、结果 URI、错误信息和生命周期时间戳
 - 历史支持工单表 `support_tickets`，用于 Agentic RAG 工作流按 workspace、
   category、query 和 tags 检索相似案例
+- Agentic RAG 审批表 `agent_approvals`，记录高风险 run 的草稿、
+  风险原因、tool/node 执行上下文、审批状态和人工反馈
 - `pg_stat_statements` 扩展和 Compose 慢查询日志配置
 - async SQLAlchemy session
-- repository 层封装文档 ingest、聊天日志写入/查询和 export job 状态流转
+- repository 层封装文档 ingest、聊天日志写入/查询、export job 状态流转和
+  agent approval 状态流转
 
 ### Ingestion
 
@@ -989,7 +995,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-652 passed
+662 passed
 ```
 
 ### Pipeline Smoke

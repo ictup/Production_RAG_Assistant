@@ -80,8 +80,8 @@ migration advice, and latency troubleshooting.
 
 ## Planned Next Steps
 
-1. Add `agent_approvals` database table.
-2. Add approval API endpoints.
+1. Add approval API endpoints.
+2. Connect high-risk workflow runs to pending approval creation.
 3. Add agent-specific Prometheus metrics.
 4. Add 30 support eval cases and an agent eval report.
 
@@ -157,3 +157,19 @@ workflow is now executed as named nodes: `classify_ticket`, `risk_check`,
 after `risk_check`. Responses now include `node_runs`, and metrics include
 `node_count`, making the workflow easier to observe and replace with a real
 graph engine later.
+
+## Step 7 Scope
+
+The seventh implementation step adds the approval persistence foundation:
+
+```text
+agent_approvals
+AgentApprovalRepository
+```
+
+The database now has an `agent_approvals` table for pending, approved, and
+rejected human approval records. The repository can create pending approvals,
+load approvals by ID or run ID, list approvals by workspace and status, and
+apply an approved or rejected decision with optional human feedback. No approval
+API endpoints are exposed yet, and the support triage workflow does not create
+approval rows until the API and high-risk workflow wiring are added.

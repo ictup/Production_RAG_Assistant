@@ -33,7 +33,7 @@ experiment.
 | --- | --- |
 | RAG pipeline | Markdown ingestion, chunking, fake/OpenAI embeddings, vector retrieval, sparse retrieval, RRF fusion, query rewrite, reranking, citations, and refusal guards |
 | API product surface | FastAPI chat, streaming chat, documents, workspaces, sessions, export jobs, health, metrics, and a minimal browser UI |
-| Data layer | Postgres, pgvector, Alembic migrations, repositories, workspace foreign keys, audit logs, and export job state transitions |
+| Data layer | Postgres, pgvector, Alembic migrations, repositories, workspace foreign keys, audit logs, export job state transitions, and agent approval persistence |
 | Security and tenancy | API keys, roles, workspace access control, workspace archive write protection, request IDs, and secret-safe config checks |
 | Operations | Dockerfile, production-style Compose stack, export worker, config preflight, deployment runbook, secret manager mapping, and release checklist |
 | Quality system | Deterministic evals, smoke tests, CI, README/docs tests, release notes, and a reproducible validation checklist |
@@ -57,13 +57,14 @@ validated release gates.
   rule-based classification, risk checks, MCP-style tool specs, a
   `rag_search_tool` backed by the existing RAG retriever, SQL-backed
   `ticket_lookup_tool`, deterministic cited `draft_response_tool`, node-level
-  graph runner records, and a `/agent/support-triage` API skeleton.
+  graph runner records, `agent_approvals` persistence, and a
+  `/agent/support-triage` API skeleton.
 - FastAPI API for chat, streaming chat, documents, workspaces, sessions, export
   jobs, health, and metrics.
 - Workspace management API with create, update, list, detail, soft archive,
   bulk archive, restore, bulk restore operations, and operation audit logging.
-- Postgres + pgvector schema with Alembic migrations, including an export job
-  foundation for asynchronous downloads.
+- Postgres + pgvector schema with Alembic migrations, including export job and
+  agent approval foundations.
 - Markdown ingestion, chunking, content hashing, fake embeddings, OpenAI
   embeddings, and reindexing.
 - Hybrid retrieval with vector search, sparse search, metadata filters, RRF
@@ -203,7 +204,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `652 passed`.
+Current local baseline: `662 passed`.
 
 ## Configuration Model
 

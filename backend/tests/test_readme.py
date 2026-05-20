@@ -53,6 +53,7 @@ def test_readme_documents_core_commands_and_links() -> None:
         "rag_search_tool",
         "ticket_lookup_tool",
         "draft_response_tool",
+        "agent_approvals",
         "docs/PROJECT_HANDOFF.md",
         "docs/CONFIGURATION.md",
         "docs/SECRET_MANAGER_MAPPING.md",

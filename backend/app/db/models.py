@@ -245,6 +245,93 @@ support_tickets_tags_idx = Index(
 )
 
 
+class AgentApproval(Base):
+    __tablename__ = "agent_approvals"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected')",
+            name="agent_approvals_status_check",
+        ),
+        UniqueConstraint("run_id", name="agent_approvals_run_id_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    run_id: Mapped[str] = mapped_column(Text, nullable=False)
+    ticket_id: Mapped[str] = mapped_column(Text, nullable=False)
+    workspace_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("workspaces.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+        default="public",
+        server_default=sql_text("'public'"),
+    )
+    request_id: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="pending",
+        server_default=sql_text("'pending'"),
+    )
+    category: Mapped[str | None] = mapped_column(Text)
+    risk_level: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    customer_message: Mapped[str] = mapped_column(Text, nullable=False)
+    draft_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    tool_calls: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=sql_text("'[]'::jsonb"),
+    )
+    node_runs: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=sql_text("'[]'::jsonb"),
+    )
+    human_feedback: Mapped[str | None] = mapped_column(Text)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=sql_text("'{}'::jsonb"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=sql_text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=sql_text("now()"),
+        onupdate=sql_text("now()"),
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+agent_approvals_workspace_created_at_idx = Index(
+    "agent_approvals_workspace_created_at_idx",
+    AgentApproval.workspace_id,
+    AgentApproval.created_at,
+)
+agent_approvals_status_created_at_idx = Index(
+    "agent_approvals_status_created_at_idx",
+    AgentApproval.status,
+    AgentApproval.created_at,
+)
+agent_approvals_request_id_idx = Index(
+    "agent_approvals_request_id_idx",
+    AgentApproval.request_id,
+)
+
+
 class Document(Base):
     __tablename__ = "documents"
 

@@ -17,6 +17,9 @@ EXPORT_JOB_MIGRATION_PATH = Path(
 SUPPORT_TICKETS_MIGRATION_PATH = Path(
     "backend/app/db/migrations/versions/0011_create_support_tickets.py"
 )
+AGENT_APPROVALS_MIGRATION_PATH = Path(
+    "backend/app/db/migrations/versions/0012_create_agent_approvals.py"
+)
 
 
 def test_workspace_foreign_key_migration_backfills_existing_workspace_ids() -> None:
@@ -112,6 +115,35 @@ def test_support_tickets_migration_adds_historical_ticket_table() -> None:
     assert "support_tickets_category_idx" in migration
     assert "support_tickets_tags_idx" in migration
     assert 'postgresql_using="gin"' in migration
+    assert 'ondelete="RESTRICT"' in migration
+    assert 'onupdate="CASCADE"' in migration
+
+
+def test_agent_approvals_migration_adds_approval_table() -> None:
+    migration = AGENT_APPROVALS_MIGRATION_PATH.read_text(encoding="utf-8")
+
+    assert 'revision: str = "0012_agent_approvals"' in migration
+    assert 'down_revision: str | None = "0011_support_tickets"' in migration
+    assert '"agent_approvals"' in migration
+    assert '"run_id"' in migration
+    assert '"ticket_id"' in migration
+    assert '"workspace_id"' in migration
+    assert '"request_id"' in migration
+    assert '"actor_hash"' in migration
+    assert '"status"' in migration
+    assert '"risk_level"' in migration
+    assert '"reason"' in migration
+    assert '"customer_message"' in migration
+    assert '"draft_answer"' in migration
+    assert '"tool_calls"' in migration
+    assert '"node_runs"' in migration
+    assert '"human_feedback"' in migration
+    assert '"decided_at"' in migration
+    assert "agent_approvals_status_check" in migration
+    assert "agent_approvals_run_id_key" in migration
+    assert "agent_approvals_workspace_created_at_idx" in migration
+    assert "agent_approvals_status_created_at_idx" in migration
+    assert "agent_approvals_request_id_idx" in migration
     assert 'ondelete="RESTRICT"' in migration
     assert 'onupdate="CASCADE"' in migration
 

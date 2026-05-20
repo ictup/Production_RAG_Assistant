@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models import (
     EMBEDDING_DIMENSION,
+    AgentApproval,
     ChatLog,
     ChatSession,
     Document,
@@ -111,6 +112,23 @@ class CreateExportJobInput:
 
 
 @dataclass(frozen=True)
+class CreateAgentApprovalInput:
+    run_id: str
+    ticket_id: str
+    workspace_id: str
+    request_id: str
+    actor_hash: str
+    risk_level: str
+    reason: str
+    customer_message: str
+    draft_answer: str
+    category: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
+    node_runs: list[dict[str, Any]] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
 class CreateWorkspaceResult:
     workspace: Workspace
     created: bool
@@ -138,6 +156,12 @@ class WorkspaceAuditLogListResult:
 class ExportJobListResult:
     total: int
     jobs: list[ExportJob]
+
+
+@dataclass(frozen=True)
+class AgentApprovalListResult:
+    total: int
+    approvals: list[AgentApproval]
 
 
 @dataclass(frozen=True)
@@ -916,6 +940,145 @@ class SupportTicketRepository:
             SupportTicketSummary.from_model(ticket)
             for ticket in tickets
         ]
+
+
+class AgentApprovalRepository:
+    VALID_DECISIONS = {"approved", "rejected"}
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create_agent_approval(
+        self,
+        approval_input: CreateAgentApprovalInput,
+        *,
+        commit: bool = False,
+    ) -> AgentApproval:
+        approval = AgentApproval(
+            id=uuid.uuid4(),
+            run_id=require_text(approval_input.run_id, "run_id"),
+            ticket_id=require_text(approval_input.ticket_id, "ticket_id"),
+            workspace_id=require_text(approval_input.workspace_id, "workspace_id"),
+            request_id=require_text(approval_input.request_id, "request_id"),
+            actor_hash=require_text(approval_input.actor_hash, "actor_hash"),
+            status="pending",
+            category=normalize_optional_text(approval_input.category),
+            risk_level=require_text(approval_input.risk_level, "risk_level"),
+            reason=require_text(approval_input.reason, "reason"),
+            customer_message=require_text(
+                approval_input.customer_message,
+                "customer_message",
+            ),
+            draft_answer=require_text(approval_input.draft_answer, "draft_answer"),
+            tool_calls=list(approval_input.tool_calls or []),
+            node_runs=list(approval_input.node_runs or []),
+            metadata_=dict(approval_input.metadata or {}),
+        )
+        self.session.add(approval)
+        await self.session.flush()
+        if commit:
+            await self.session.commit()
+        return approval
+
+    async def get_agent_approval(
+        self,
+        *,
+        approval_id: uuid.UUID,
+        workspace_id: str | None = None,
+    ) -> AgentApproval | None:
+        filters = [AgentApproval.id == approval_id]
+        normalized_workspace_id = normalize_optional_text(workspace_id)
+        if normalized_workspace_id is not None:
+            filters.append(AgentApproval.workspace_id == normalized_workspace_id)
+
+        statement = select(AgentApproval).where(*filters)
+        return await self.session.scalar(statement)
+
+    async def get_agent_approval_by_run_id(
+        self,
+        *,
+        run_id: str,
+        workspace_id: str | None = None,
+    ) -> AgentApproval | None:
+        filters = [AgentApproval.run_id == require_text(run_id, "run_id")]
+        normalized_workspace_id = normalize_optional_text(workspace_id)
+        if normalized_workspace_id is not None:
+            filters.append(AgentApproval.workspace_id == normalized_workspace_id)
+
+        statement = select(AgentApproval).where(*filters)
+        return await self.session.scalar(statement)
+
+    async def list_agent_approvals(
+        self,
+        *,
+        workspace_id: str,
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> AgentApprovalListResult:
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+        if offset < 0:
+            raise ValueError("offset must not be negative")
+
+        filters = [
+            AgentApproval.workspace_id == require_text(workspace_id, "workspace_id")
+        ]
+        normalized_status = normalize_optional_text(status)
+        if normalized_status is not None:
+            filters.append(AgentApproval.status == normalized_status)
+
+        total_statement = (
+            select(func.count()).select_from(AgentApproval).where(*filters)
+        )
+        total = await self.session.scalar(total_statement)
+        statement = (
+            select(AgentApproval)
+            .where(*filters)
+            .order_by(
+                AgentApproval.created_at.desc(),
+                AgentApproval.id.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        approvals = list((await self.session.scalars(statement)).all())
+        return AgentApprovalListResult(
+            total=int(total or 0),
+            approvals=approvals,
+        )
+
+    async def decide_agent_approval(
+        self,
+        *,
+        approval_id: uuid.UUID,
+        decision: str,
+        human_feedback: str | None = None,
+        workspace_id: str | None = None,
+        commit: bool = False,
+    ) -> AgentApproval | None:
+        normalized_decision = require_text(decision, "decision")
+        if normalized_decision not in self.VALID_DECISIONS:
+            raise ValueError("decision must be approved or rejected")
+
+        approval = await self.get_agent_approval(
+            approval_id=approval_id,
+            workspace_id=workspace_id,
+        )
+        if approval is None:
+            return None
+        if approval.status != "pending":
+            raise ValueError("agent approval must be pending to decide")
+
+        now = datetime.now(UTC)
+        approval.status = normalized_decision
+        approval.human_feedback = normalize_optional_text(human_feedback)
+        approval.decided_at = now
+        approval.updated_at = now
+        await self.session.flush()
+        if commit:
+            await self.session.commit()
+        return approval
 
 
 class DocumentRepository:

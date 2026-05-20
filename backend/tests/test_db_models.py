@@ -2,6 +2,7 @@ from pgvector.sqlalchemy import Vector
 
 from backend.app.db.models import (
     EMBEDDING_DIMENSION,
+    AgentApproval,
     Base,
     ChatLog,
     ChatSession,
@@ -20,6 +21,7 @@ def test_base_metadata_contains_core_document_tables() -> None:
         "workspace_audit_logs",
         "export_jobs",
         "support_tickets",
+        "agent_approvals",
         "documents",
         "document_chunks",
         "chat_sessions",
@@ -97,6 +99,34 @@ def test_support_ticket_has_lookup_columns_and_indexes() -> None:
     assert "support_tickets_tags_idx" in index_names
 
 
+def test_agent_approval_has_lifecycle_columns_and_indexes() -> None:
+    constraints = {
+        constraint.name
+        for constraint in AgentApproval.__table__.constraints
+    }
+    index_names = {index.name for index in AgentApproval.__table__.indexes}
+
+    assert AgentApproval.__table__.c.run_id.nullable is False
+    assert AgentApproval.__table__.c.ticket_id.nullable is False
+    assert AgentApproval.__table__.c.workspace_id.nullable is False
+    assert AgentApproval.__table__.c.request_id.nullable is False
+    assert AgentApproval.__table__.c.actor_hash.nullable is False
+    assert AgentApproval.__table__.c.status.nullable is False
+    assert AgentApproval.__table__.c.risk_level.nullable is False
+    assert AgentApproval.__table__.c.reason.nullable is False
+    assert AgentApproval.__table__.c.customer_message.nullable is False
+    assert AgentApproval.__table__.c.draft_answer.nullable is False
+    assert AgentApproval.__table__.c.tool_calls.nullable is False
+    assert AgentApproval.__table__.c.node_runs.nullable is False
+    assert AgentApproval.__table__.c.decided_at.nullable is True
+    assert AgentApproval.metadata_.name == "metadata"
+    assert "agent_approvals_status_check" in constraints
+    assert "agent_approvals_run_id_key" in constraints
+    assert "agent_approvals_workspace_created_at_idx" in index_names
+    assert "agent_approvals_status_created_at_idx" in index_names
+    assert "agent_approvals_request_id_idx" in index_names
+
+
 def test_workspace_scoped_tables_reference_workspace_registry() -> None:
     for table in (
         Document,
@@ -105,6 +135,7 @@ def test_workspace_scoped_tables_reference_workspace_registry() -> None:
         ChatLog,
         ExportJob,
         SupportTicket,
+        AgentApproval,
     ):
         foreign_keys = list(table.__table__.c.workspace_id.foreign_keys)
 
