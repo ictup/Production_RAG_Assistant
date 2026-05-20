@@ -135,13 +135,19 @@ Run the default pipeline smoke:
 uv run python -m backend.app.rag.pipeline_smoke
 ```
 
+Run the document-management smoke:
+
+```powershell
+uv run python -m evals.document_management_smoke
+```
+
 Run the eval gate:
 
 ```powershell
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `442 passed`.
+Current local baseline: `449 passed`.
 
 ## Configuration Model
 
@@ -221,6 +227,7 @@ uv run ruff check .
 uv run pytest
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 uv run python -m backend.app.rag.pipeline_smoke
+uv run python -m evals.document_management_smoke
 docker compose -f docker-compose.prod.yml config --quiet
 rg -n "s[k]-" backend docs .github ingestion evals pyproject.toml README.md Makefile docker-compose.yml docker-compose.prod.yml .env.example Dockerfile .dockerignore
 ```

@@ -38,6 +38,7 @@ def test_readme_documents_core_commands_and_links() -> None:
         "uv run pytest",
         "uv run python -m evals.run --format summary --fail-on-failure --no-output",
         "uv run python -m backend.app.rag.pipeline_smoke",
+        "uv run python -m evals.document_management_smoke",
         "http://127.0.0.1:8000/app/",
         "docs/PROJECT_HANDOFF.md",
         "docs/CONFIGURATION.md",

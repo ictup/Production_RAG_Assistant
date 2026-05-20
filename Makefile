@@ -1,4 +1,4 @@
-.PHONY: db-up db-down db-logs prod-config prod-build prod-up prod-down prod-logs migrate ingest ingest-dry-run reindex-embeddings-dry-run reindex-embeddings inspect-ingestion inspect-chat-logs inspect-evals run-evals eval-gate eval-gate-openai eval-trend embedding-smoke generator-smoke vector-smoke sparse-smoke hybrid-smoke rerank-smoke pipeline-smoke pipeline-smoke-openai
+.PHONY: db-up db-down db-logs prod-config prod-build prod-up prod-down prod-logs migrate ingest ingest-dry-run reindex-embeddings-dry-run reindex-embeddings inspect-ingestion inspect-chat-logs inspect-evals run-evals eval-gate eval-gate-openai eval-trend document-management-smoke embedding-smoke generator-smoke vector-smoke sparse-smoke hybrid-smoke rerank-smoke pipeline-smoke pipeline-smoke-openai
 
 db-up:
 	docker compose up -d postgres
@@ -59,6 +59,9 @@ eval-gate-openai:
 
 eval-trend:
 	uv run python -m evals.run --format summary --trend-output evals/reports/trends.jsonl
+
+document-management-smoke:
+	uv run python -m evals.document_management_smoke
 
 embedding-smoke:
 	uv run python -m backend.app.rag.embedding_smoke --expected-dimension 1536

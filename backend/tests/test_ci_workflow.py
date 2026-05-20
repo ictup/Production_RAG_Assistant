@@ -33,6 +33,7 @@ def test_ci_workflow_runs_required_checks() -> None:
     assert "uv run alembic upgrade head" in commands
     assert "python -m ingestion.ingest" in commands
     assert "python -m backend.app.rag.pipeline_smoke" in commands
+    assert "python -m evals.document_management_smoke" in commands
     assert "python -m evals.run" in commands
     assert "--fail-on-failure" in commands
 

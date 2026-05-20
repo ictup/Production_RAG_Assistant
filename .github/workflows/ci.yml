@@ -78,6 +78,9 @@ jobs:
       - name: Pipeline smoke
         run: uv run python -m backend.app.rag.pipeline_smoke
 
+      - name: Document management smoke
+        run: uv run python -m evals.document_management_smoke
+
       - name: Eval gate
         run: >-
           uv run python -m evals.run

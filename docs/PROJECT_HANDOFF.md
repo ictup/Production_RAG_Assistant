@@ -189,6 +189,7 @@ docs/EVAL_TRENDS.md
   - seed document ingest
   - ingestion inspect
   - pipeline smoke
+  - document-management smoke
   - eval gate
   - eval report artifact 上传
 
@@ -813,7 +814,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-442 passed
+449 passed
 ```
 
 ### Pipeline Smoke
@@ -821,6 +822,16 @@ uv run pytest
 ```powershell
 uv run python -m backend.app.rag.pipeline_smoke
 ```
+
+### Document Management Smoke
+
+```powershell
+uv run python -m evals.document_management_smoke
+```
+
+该 smoke 会通过真实 FastAPI app 和数据库执行文档上传、列表、详情、
+reindex dry-run、删除和删除后 404 校验。上传时强制使用 fake embedding
+client，不会调用外部 provider。
 
 真实 OpenAI 端到端 smoke，不修改 `.env`，临时覆盖 provider/model：
 
@@ -991,6 +1002,8 @@ make run-evals          运行 eval summary
 make eval-gate          eval 失败时返回非零退出码
 make eval-gate-openai   用 OpenAI embedding/generator 运行真实 eval gate
 make eval-trend         运行 eval summary 并追加 JSONL 趋势记录
+make document-management-smoke
+                        验证文档管理 API 上传、查询、reindex dry-run 和删除
 make embedding-smoke    验证当前 embedding provider 能返回正确维度
 make generator-smoke    验证当前 generator provider 能返回非空答案
 make pipeline-smoke     端到端 pipeline smoke
@@ -1140,6 +1153,7 @@ Completed: 2026-05-20T09:51:56Z
 - 文档上传 API 已完成：`POST /documents`。
 - 文档重新索引 API 已完成：`POST /documents/reindex`。
 - 当前已有 CLI 和 API 两种 chunk embedding reindex 入口。
+- document-management smoke 已完成，覆盖上传、列表、详情、reindex dry-run、删除和删除后 404。
 - chat session 表和 `chat_logs.session_id` 迁移已完成。
 - chat session repository 和基础 API 已完成：`POST /chat/sessions`、`GET /chat/sessions`、`GET /chat/sessions/{session_id}`。
 - workspace registry 表、repository 和基础 API 已完成：`POST /workspaces`、`GET /workspaces`、`GET /workspaces/{workspace_id}`。
@@ -1267,7 +1281,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-document-management eval coverage
+remote CI status check for document-management smoke
 ```
 
 原因：
@@ -1280,7 +1294,7 @@ document-management eval coverage
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - `.env.example` 已补充真实 OpenAI provider 的本地注释 preset，配置切换路径更清楚。
-- 当前 seed 文档已覆盖 attention、KV cache memory management 和 speculative decoding，RAG eval 也已覆盖 metadata filter。下一步建议补 document-management 相关 eval，让评测覆盖更多生产路径。
+- 当前 seed 文档已覆盖 attention、KV cache memory management 和 speculative decoding，RAG eval 已覆盖 metadata filter，document-management smoke 已覆盖 API 状态变更链路。下一步建议确认远端 CI 是否通过包含 document-management smoke 的新 workflow。
 
 启用 OpenAI embedding 后可以先跑：
 
