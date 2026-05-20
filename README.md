@@ -29,7 +29,8 @@ real provider key is available.
 - Deterministic eval gate with JSONL datasets and trend recording.
 - Minimal web UI at `/app/` with sessions, history, SSE chat, document upload,
   reindex actions, workspace creation, editing, archive/restore actions, admin
-  overview, audit filters, audit export, audit details, and chat error recovery.
+  overview, archived-workspace read-only guards, audit filters, audit export,
+  audit details, and chat error recovery.
 - Dockerfile, production-style Compose stack, deployment runbook, and CI
   workflow.
 
@@ -236,6 +237,8 @@ curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/restore `
 Archived workspaces remain readable for audit and recovery, but write-oriented
 operations return `409 workspace archived`. This includes chat, streaming chat,
 chat session creation, document upload, document deletion, and document reindex.
+The web UI mirrors this policy by disabling write controls for the current
+workspace after it detects `archived_at`.
 
 ## Validation Checklist
 

@@ -22,6 +22,7 @@ const state = {
 const els = {
   apiKey: document.querySelector("#api-key"),
   workspaceId: document.querySelector("#workspace-id"),
+  workspaceArchiveBanner: document.querySelector("#workspace-archive-banner"),
   newSession: document.querySelector("#new-session"),
   reloadSessions: document.querySelector("#reload-sessions"),
   sessionList: document.querySelector("#session-list"),
@@ -99,11 +100,13 @@ function bindEvents() {
   els.workspaceId.addEventListener("input", () => {
     state.workspaceId = els.workspaceId.value.trim() || "public";
     localStorage.setItem("rag.workspaceId", state.workspaceId);
+    syncWorkspaceWriteGuards();
   });
 
   els.workspaceId.addEventListener("change", () => {
     state.admin.logOffset = 0;
     clearSelectedSession();
+    syncWorkspaceWriteGuards();
     void loadSessions();
     void loadDocuments();
     void loadAdminOverview();
@@ -394,6 +397,7 @@ async function archiveWorkspaceFromAdmin() {
     replaceAdminWorkspace(body.workspace);
     syncWorkspaceEditForm();
     renderAdminWorkspaces();
+    syncWorkspaceWriteGuards();
     setAdminStatus(`Archived workspace ${body.workspace.id}`);
   } catch (error) {
     setAdminError(error.message);
@@ -422,6 +426,7 @@ async function restoreWorkspaceFromAdmin() {
     replaceAdminWorkspace(body.workspace);
     syncWorkspaceEditForm();
     renderAdminWorkspaces();
+    syncWorkspaceWriteGuards();
     setAdminStatus(`Restored workspace ${body.workspace.id}`);
   } catch (error) {
     setAdminError(error.message);
@@ -505,12 +510,54 @@ function syncWorkspaceEditForm() {
   els.adminEditWorkspaceMetadata.value = formatMetadataJson(workspace?.metadata || {});
   els.adminArchiveWorkspaceReason.value = workspace?.archived_reason || "";
   syncWorkspaceLifecycleButtons(workspace);
+  syncWorkspaceWriteGuards();
 }
 
 function currentAdminWorkspace() {
   return (
     state.admin.workspaces.find((item) => item.id === state.workspaceId) || null
   );
+}
+
+function isCurrentWorkspaceArchived() {
+  return Boolean(currentAdminWorkspace()?.archived_at);
+}
+
+function syncWorkspaceWriteGuards() {
+  const isArchived = isCurrentWorkspaceArchived();
+  const message = isArchived
+    ? "Workspace archived: read-only mode. Restore it in Admin before chat, upload, reindex, or session creation."
+    : "";
+
+  els.workspaceArchiveBanner.hidden = !isArchived;
+  els.workspaceArchiveBanner.textContent = message;
+  els.newSession.disabled = isArchived;
+  els.question.disabled = isArchived;
+  if (!state.sending) {
+    els.send.disabled = isArchived;
+  }
+
+  for (const element of [
+    els.documentSourceUri,
+    els.documentTitle,
+    els.documentFile,
+    els.documentMarkdown,
+    els.uploadDocument,
+    els.reindexSourceUri,
+    els.reindexDryRun,
+    els.reindexWrite,
+  ]) {
+    element.disabled = isArchived;
+  }
+}
+
+function guardArchivedWorkspace(statusWriter) {
+  if (!isCurrentWorkspaceArchived()) {
+    return false;
+  }
+  statusWriter("Workspace archived: restore it before writing changes.");
+  syncWorkspaceWriteGuards();
+  return true;
 }
 
 function syncWorkspaceLifecycleButtons(workspace) {
@@ -584,6 +631,10 @@ async function loadMarkdownFile() {
   if (!file) {
     return;
   }
+  if (guardArchivedWorkspace(setDocumentError)) {
+    els.documentFile.value = "";
+    return;
+  }
 
   const text = await file.text();
   els.documentMarkdown.value = text;
@@ -596,6 +647,9 @@ async function loadMarkdownFile() {
 }
 
 async function uploadDocument() {
+  if (guardArchivedWorkspace(setDocumentError)) {
+    return;
+  }
   const sourceUri = els.documentSourceUri.value.trim();
   const markdown = els.documentMarkdown.value.trim();
   const title = els.documentTitle.value.trim();
@@ -629,11 +683,14 @@ async function uploadDocument() {
   } catch (error) {
     setDocumentError(error.message);
   } finally {
-    els.uploadDocument.disabled = false;
+    syncWorkspaceWriteGuards();
   }
 }
 
 async function reindexDocuments(dryRun) {
+  if (guardArchivedWorkspace(setDocumentError)) {
+    return;
+  }
   const sourceUri = els.reindexSourceUri.value.trim();
   els.reindexDryRun.disabled = true;
   els.reindexWrite.disabled = true;
@@ -661,8 +718,7 @@ async function reindexDocuments(dryRun) {
   } catch (error) {
     setDocumentError(error.message);
   } finally {
-    els.reindexDryRun.disabled = false;
-    els.reindexWrite.disabled = false;
+    syncWorkspaceWriteGuards();
   }
 }
 
@@ -702,6 +758,7 @@ function renderAdminOverview({ workspaceTotal, logTotal, logLimit, logOffset }) 
   els.adminLogCount.textContent = String(logTotal);
   renderAdminWorkspaces();
   syncWorkspaceEditForm();
+  syncWorkspaceWriteGuards();
   renderAdminLogs();
   renderAdminPagination({
     count: logTotal,
@@ -882,6 +939,9 @@ function selectWorkspace(workspaceId) {
 }
 
 async function createSession(title) {
+  if (guardArchivedWorkspace(setError)) {
+    return null;
+  }
   setStatus("Creating session");
   try {
     const response = await apiFetch("/chat/sessions", {
@@ -973,6 +1033,9 @@ async function submitQuestion(retryQuestion = "") {
   if (!question || state.sending) {
     return;
   }
+  if (guardArchivedWorkspace(setError)) {
+    return;
+  }
 
   state.sending = true;
   els.send.disabled = true;
@@ -1001,8 +1064,10 @@ async function submitQuestion(retryQuestion = "") {
     renderMessageError(assistantMessage, appError, question);
   } finally {
     state.sending = false;
-    els.send.disabled = false;
-    els.question.focus();
+    syncWorkspaceWriteGuards();
+    if (!isCurrentWorkspaceArchived()) {
+      els.question.focus();
+    }
   }
 }
 

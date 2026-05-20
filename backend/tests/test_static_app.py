@@ -21,6 +21,7 @@ def test_static_app_serves_index_html() -> None:
     assert "text/html" in response.headers["content-type"]
     assert "Production RAG Assistant" in response.text
     assert 'id="chat-form"' in response.text
+    assert 'id="workspace-archive-banner"' in response.text
     assert 'id="document-form"' in response.text
     assert 'id="reindex-dry-run"' in response.text
     assert 'id="reload-admin"' in response.text
@@ -58,6 +59,9 @@ def test_static_app_serves_assets() -> None:
     assert "archiveWorkspaceFromAdmin" in script_response.text
     assert "restoreWorkspaceFromAdmin" in script_response.text
     assert "workspaceLifecycleText" in script_response.text
+    assert "isCurrentWorkspaceArchived" in script_response.text
+    assert "syncWorkspaceWriteGuards" in script_response.text
+    assert "guardArchivedWorkspace" in script_response.text
     assert "parseMetadataJson" in script_response.text
     assert "syncWorkspaceEditForm" in script_response.text
     assert "optionalText" in script_response.text
@@ -81,6 +85,7 @@ def test_static_app_serves_assets() -> None:
     assert style_response.status_code == 200
     assert ".chat-panel" in style_response.text
     assert ".knowledge-panel" in style_response.text
+    assert ".workspace-archive-banner" in style_response.text
     assert ".admin-panel" in style_response.text
     assert ".admin-create-form" in style_response.text
     assert ".admin-edit-form" in style_response.text

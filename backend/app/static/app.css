@@ -118,6 +118,17 @@ button:disabled {
   color: var(--muted);
 }
 
+.workspace-archive-banner {
+  border: 1px solid rgba(180, 35, 24, 0.35);
+  border-radius: 8px;
+  background: #fff1f0;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  padding: 10px;
+}
+
 .settings {
   display: grid;
   gap: 12px;
