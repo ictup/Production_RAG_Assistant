@@ -1,7 +1,9 @@
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+from backend.app.rag.metadata_filters import normalize_metadata_filter
 
 EvalCaseType = Literal["rag", "refusal", "security"]
 
@@ -12,6 +14,7 @@ class EvalCase(BaseModel):
     case_type: EvalCaseType
     expected_sources: list[str] = Field(default_factory=list)
     expected_keywords: list[str] = Field(default_factory=list)
+    metadata_filter: dict[str, Any] = Field(default_factory=dict)
     must_cite: bool = False
     should_refuse: bool = False
     attack_type: str | None = None
@@ -37,6 +40,15 @@ class EvalCase(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("metadata_filter", mode="before")
+    @classmethod
+    def normalize_metadata_filter_value(cls, value: object) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("metadata_filter must be an object")
+        return normalize_metadata_filter(value)
 
     @model_validator(mode="after")
     def validate_case_contract(self) -> "EvalCase":

@@ -42,6 +42,7 @@ def make_response(
     sources: list[Source] | None = None,
     citation_valid: bool | None = True,
     refusal: RefusalInfo | None = None,
+    metadata_filter: dict[str, object] | None = None,
 ) -> ChatPipelineResponse:
     return ChatPipelineResponse(
         answer=answer,
@@ -53,6 +54,7 @@ def make_response(
             fused_count=1,
             used_count=1,
             top_score=0.5,
+            metadata_filter=metadata_filter or {},
         ),
         usage=UsageInfo(
             model="test-fake-llm",
@@ -84,6 +86,37 @@ def test_score_eval_case_passes_rag_case() -> None:
     assert result.source_match is True
     assert result.keyword_match is True
     assert result.failure_reasons == []
+
+
+def test_score_eval_case_checks_metadata_filter_was_applied() -> None:
+    eval_case = EvalCase(
+        id="rag_005",
+        question="Which inference technique stores the KV cache in fixed-size blocks?",
+        case_type="rag",
+        metadata_filter={"topic": "inference", "tags": ["kv-cache"]},
+        expected_sources=["pagedattention"],
+        expected_keywords=["KV cache"],
+        must_cite=True,
+    )
+
+    result = score_eval_case(
+        eval_case,
+        response=make_response(
+            answer="PagedAttention stores the KV cache in fixed-size blocks. [1]",
+            sources=[
+                make_source(
+                    source_uri="llm_systems/pagedattention.md",
+                    title="PagedAttention Notes",
+                    section="PagedAttention",
+                )
+            ],
+            metadata_filter={"topic": "inference"},
+        ),
+        dataset_name="rag_eval_questions",
+    )
+
+    assert result.passed is False
+    assert "metadata_filter_not_applied" in result.failure_reasons
 
 
 def test_score_eval_case_fails_rag_case_with_missing_keyword_and_citation() -> None:

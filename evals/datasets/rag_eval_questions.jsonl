@@ -2,3 +2,4 @@
 {"id":"rag_002","question":"How does PagedAttention improve KV cache memory management?","expected_sources":["pagedattention"],"expected_keywords":["KV cache","paging","memory"],"must_cite":true}
 {"id":"rag_003","question":"How does speculative decoding reduce autoregressive inference latency?","expected_sources":["speculative_decoding"],"expected_keywords":["draft model","target model","latency"],"must_cite":true}
 {"id":"rag_004","question":"How does speculative decoding preserve the target model distribution?","expected_sources":["speculative_decoding"],"expected_keywords":["target model distribution","accepts","rejects"],"must_cite":true}
+{"id":"rag_005","question":"Which inference technique stores the KV cache in fixed-size blocks?","metadata_filter":{"topic":"inference","tags":["kv-cache"]},"expected_sources":["pagedattention"],"expected_keywords":["KV","memory","paging"],"must_cite":true}

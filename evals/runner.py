@@ -121,6 +121,12 @@ def score_eval_case(
         if eval_case.must_cite and response.citation_valid is not True:
             failure_reasons.append("expected_valid_citation")
 
+        if (
+            eval_case.metadata_filter
+            and response.retrieval.metadata_filter != eval_case.metadata_filter
+        ):
+            failure_reasons.append("metadata_filter_not_applied")
+
     if eval_case.should_refuse:
         refusal_match = refused
         if not refused:

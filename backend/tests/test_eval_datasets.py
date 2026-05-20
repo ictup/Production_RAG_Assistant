@@ -21,6 +21,7 @@ def test_parse_rag_eval_case_normalizes_values() -> None:
         {
             "id": " rag_001 ",
             "question": " What problem does FlashAttention solve? ",
+            "metadata_filter": {" topic ": "attention", "rank": 1},
             "expected_sources": [" flashattention ", ""],
             "expected_keywords": [" memory ", "IO"],
             "must_cite": True,
@@ -32,6 +33,7 @@ def test_parse_rag_eval_case_normalizes_values() -> None:
         id="rag_001",
         question="What problem does FlashAttention solve?",
         case_type="rag",
+        metadata_filter={"topic": "attention", "rank": 1},
         expected_sources=["flashattention"],
         expected_keywords=["memory", "IO"],
         must_cite=True,
@@ -103,7 +105,7 @@ def test_load_eval_dataset_rejects_missing_file(tmp_path) -> None:
 def test_load_default_eval_suite_loads_all_checked_in_datasets() -> None:
     suite = load_default_eval_suite()
 
-    assert suite.total_cases == 8
+    assert suite.total_cases == 9
     assert [dataset.name for dataset in suite.datasets] == [
         "rag_eval_questions",
         "refusal_questions",
@@ -120,9 +122,9 @@ def test_format_eval_suite_includes_dataset_counts() -> None:
     output = format_eval_suite(load_default_eval_suite())
 
     assert "datasets: 3" in output
-    assert "total cases: 8" in output
+    assert "total cases: 9" in output
     assert "- rag_eval_questions" in output
-    assert "ids: rag_001, rag_002, rag_003, rag_004" in output
+    assert "ids: rag_001, rag_002, rag_003, rag_004, rag_005" in output
 
 
 def test_rag_eval_expected_sources_match_seed_document_names() -> None:

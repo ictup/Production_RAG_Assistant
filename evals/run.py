@@ -240,6 +240,7 @@ async def async_main(argv: list[str] | None = None) -> int:
                 ChatPipelineRequest(
                     question=eval_case.question,
                     workspace_id=args.workspace_id,
+                    metadata_filter=eval_case.metadata_filter,
                     vector_top_k=args.vector_top_k,
                     sparse_top_k=args.sparse_top_k,
                     fused_top_k=args.fused_top_k,
