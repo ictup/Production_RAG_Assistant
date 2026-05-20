@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, or_, select
@@ -656,6 +656,47 @@ class ExportJobRepository:
             return None
         await self.mark_export_job_running(export_job=export_job, commit=commit)
         return export_job
+
+    async def reset_stale_running_export_jobs(
+        self,
+        *,
+        timeout_seconds: float,
+        now: datetime | None = None,
+        commit: bool = False,
+    ) -> int:
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be greater than zero")
+
+        current_time = now or datetime.now(UTC)
+        cutoff = current_time - timedelta(seconds=timeout_seconds)
+        statement = (
+            select(ExportJob)
+            .where(
+                ExportJob.status == "running",
+                ExportJob.started_at.is_not(None),
+                ExportJob.started_at <= cutoff,
+            )
+            .order_by(ExportJob.started_at.asc(), ExportJob.created_at.asc())
+            .with_for_update(skip_locked=True)
+        )
+        stale_jobs = list((await self.session.scalars(statement)).all())
+        if not stale_jobs:
+            return 0
+
+        for job in stale_jobs:
+            job.status = "pending"
+            job.started_at = None
+            job.completed_at = None
+            job.result_uri = None
+            job.result_media_type = None
+            job.result_size_bytes = None
+            job.error_message = None
+            job.updated_at = current_time
+
+        await self.session.flush()
+        if commit:
+            await self.session.commit()
+        return len(stale_jobs)
 
     async def mark_export_job_running(
         self,

@@ -815,6 +815,69 @@ async def test_claim_next_pending_export_job_marks_job_running() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reset_stale_running_export_jobs_marks_jobs_pending() -> None:
+    export_job = make_export_job_model(status="running")
+    export_job.started_at = datetime(2026, 5, 20, 8, 0, tzinfo=UTC)
+    export_job.completed_at = None
+    export_job.result_uri = "file://exports/stale.jsonl"
+    export_job.result_media_type = "application/x-ndjson"
+    export_job.result_size_bytes = 42
+    export_job.error_message = "worker interrupted"
+    session = FakeAsyncSession(scalars_result=[export_job])
+    repository = ExportJobRepository(session)  # type: ignore[arg-type]
+
+    reset_count = await repository.reset_stale_running_export_jobs(
+        timeout_seconds=60,
+        now=datetime(2026, 5, 20, 8, 2, tzinfo=UTC),
+        commit=True,
+    )
+
+    assert reset_count == 1
+    assert export_job.status == "pending"
+    assert export_job.started_at is None
+    assert export_job.completed_at is None
+    assert export_job.result_uri is None
+    assert export_job.result_media_type is None
+    assert export_job.result_size_bytes is None
+    assert export_job.error_message is None
+    assert export_job.updated_at == datetime(2026, 5, 20, 8, 2, tzinfo=UTC)
+    assert session.scalars_statement is not None
+    compiled = str(session.scalars_statement)
+    assert "export_jobs.status" in compiled
+    assert "export_jobs.started_at" in compiled
+    assert session.flushed is True
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_reset_stale_running_export_jobs_returns_zero_without_matches() -> None:
+    session = FakeAsyncSession(scalars_result=[])
+    repository = ExportJobRepository(session)  # type: ignore[arg-type]
+
+    reset_count = await repository.reset_stale_running_export_jobs(
+        timeout_seconds=60,
+        now=datetime(2026, 5, 20, 8, 2, tzinfo=UTC),
+        commit=True,
+    )
+
+    assert reset_count == 0
+    assert session.scalars_statement is not None
+    assert session.flushed is False
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_reset_stale_running_export_jobs_rejects_invalid_timeout() -> None:
+    session = FakeAsyncSession()
+    repository = ExportJobRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        await repository.reset_stale_running_export_jobs(timeout_seconds=0)
+
+    assert session.scalars_statement is None
+
+
+@pytest.mark.asyncio
 async def test_complete_export_job_marks_job_succeeded() -> None:
     export_job = make_export_job_model(status="running")
     export_job.started_at = datetime(2026, 5, 20, 8, 1, tzinfo=UTC)

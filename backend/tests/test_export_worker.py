@@ -21,9 +21,24 @@ from backend.app.exporting.worker import (
 class FakeExportJobRepository:
     def __init__(self, export_job: ExportJob | None) -> None:
         self.export_job = export_job
+        self.reset_calls: list[dict[str, Any]] = []
         self.claim_calls: list[bool] = []
         self.complete_calls: list[dict[str, Any]] = []
         self.fail_calls: list[dict[str, Any]] = []
+
+    async def reset_stale_running_export_jobs(
+        self,
+        *,
+        timeout_seconds: float,
+        commit: bool = False,
+    ) -> int:
+        self.reset_calls.append(
+            {
+                "timeout_seconds": timeout_seconds,
+                "commit": commit,
+            }
+        )
+        return 0
 
     async def claim_next_pending_export_job(
         self,
@@ -196,6 +211,9 @@ async def test_execute_next_export_job_writes_jsonl_and_marks_succeeded(
         }
     ]
     assert export_job_repository.claim_calls == [True]
+    assert export_job_repository.reset_calls == [
+        {"timeout_seconds": 3600.0, "commit": True}
+    ]
     assert export_job_repository.complete_calls[0]["commit"] is True
     assert export_job_repository.complete_calls[0]["result_media_type"] == (
         "application/x-ndjson; charset=utf-8"
@@ -231,6 +249,9 @@ async def test_execute_next_export_job_writes_csv(tmp_path: Path) -> None:
     assert export_job_repository.complete_calls[0]["result_media_type"] == (
         "text/csv; charset=utf-8"
     )
+    assert export_job_repository.reset_calls == [
+        {"timeout_seconds": 3600.0, "commit": True}
+    ]
 
 
 @pytest.mark.asyncio
@@ -247,6 +268,9 @@ async def test_execute_next_export_job_returns_none_without_pending_job(
     )
 
     assert result is None
+    assert export_job_repository.reset_calls == [
+        {"timeout_seconds": 3600.0, "commit": True}
+    ]
     assert export_job_repository.claim_calls == [True]
     assert export_job_repository.complete_calls == []
     assert export_job_repository.fail_calls == []
@@ -273,8 +297,33 @@ async def test_execute_next_export_job_marks_unsupported_job_failed(
     assert "unsupported export type" in result.job.error_message
     assert export_job_repository.complete_calls == []
     assert export_job_repository.fail_calls[0]["commit"] is True
+    assert export_job_repository.reset_calls == [
+        {"timeout_seconds": 3600.0, "commit": True}
+    ]
     assert chat_log_repository.list_calls == []
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_execute_next_export_job_uses_configured_running_timeout(
+    tmp_path: Path,
+) -> None:
+    export_job = make_export_job_model()
+    export_job_repository = FakeExportJobRepository(export_job)
+    chat_log_repository = FakeChatLogRepository([make_chat_log_model()])
+
+    await execute_next_export_job(
+        export_job_repository=export_job_repository,  # type: ignore[arg-type]
+        chat_log_repository=chat_log_repository,  # type: ignore[arg-type]
+        settings=Settings(
+            export_storage_dir=str(tmp_path),
+            export_job_running_timeout_seconds=12.5,
+        ),
+    )
+
+    assert export_job_repository.reset_calls == [
+        {"timeout_seconds": 12.5, "commit": True}
+    ]
 
 
 def test_export_filename_parts_are_sanitized() -> None:

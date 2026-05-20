@@ -47,6 +47,13 @@ async def execute_next_export_job(
     chat_log_repository: ChatLogRepository,
     settings: Settings,
 ) -> ExportJobExecutionResult | None:
+    reset_count = await export_job_repository.reset_stale_running_export_jobs(
+        timeout_seconds=settings.export_job_running_timeout_seconds,
+        commit=True,
+    )
+    if reset_count:
+        LOGGER.warning("reset %s stale running export job(s)", reset_count)
+
     export_job = await export_job_repository.claim_next_pending_export_job(
         commit=True,
     )

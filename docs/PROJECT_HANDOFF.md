@@ -105,7 +105,7 @@ docs/EVAL_TRENDS.md
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency/cost 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
-- 异步导出 job 基础模型、API、worker 与下载接口：`export_jobs` 表和 `ExportJobRepository` 已支持 pending/running/succeeded/failed 状态流转，`/exports/jobs` 已支持创建、列表、详情和下载查询，`python -m backend.app.exporting.worker` 可执行一个 pending chat log 导出任务，`python -m backend.app.exporting.worker --loop` 可作为常驻 worker 轮询并落地 JSONL/CSV 文件
+- 异步导出 job 基础模型、API、worker 与下载接口：`export_jobs` 表和 `ExportJobRepository` 已支持 pending/running/succeeded/failed 状态流转，`/exports/jobs` 已支持创建、列表、详情和下载查询，`python -m backend.app.exporting.worker` 可执行一个 pending chat log 导出任务，`python -m backend.app.exporting.worker --loop` 可作为常驻 worker 轮询并落地 JSONL/CSV 文件；worker 会按 `EXPORT_JOB_RUNNING_TIMEOUT_SECONDS` 恢复长时间停留在 running 的任务
 - Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、编辑、归档、恢复、workspace 搜索、分页、状态过滤、当前页批量归档/恢复和跨页匹配批量预览/确认、归档 workspace 写入控件禁用、只读 admin overview、chat log audit filters、chat log async export job creation/poll/download、chat log audit details、workspace operation audit filters 和 workspace operation audit details
 
 ### 数据库与迁移
@@ -1300,6 +1300,7 @@ Completed: 2026-05-20T09:51:56Z
 - export worker 基础版已完成：`backend.app.exporting.worker` 会 claim 一个 pending job，按 filters 查询 chat logs，复用同步导出的 JSONL/CSV 序列化，写入 `EXPORT_STORAGE_DIR`，并将 job 标记为 succeeded/failed。
 - export 下载接口和前端轮询已完成：`GET /exports/jobs/{job_id}/download` 只允许下载当前 workspace 下 succeeded job 的 `EXPORT_STORAGE_DIR` 内部文件，Admin export JSONL/CSV 按钮会创建 job、轮询详情并在 succeeded 后触发下载。
 - export worker 常驻服务和 production compose 编排已完成：`--loop` 模式按 `EXPORT_WORKER_POLL_INTERVAL_SECONDS` 轮询，`docker-compose.prod.yml` 增加 `export-worker` 服务，并让 API/worker 共享 `export_prod_data`。
+- export job running 超时恢复基础版已完成：worker 每轮 claim 前会按 `EXPORT_JOB_RUNNING_TIMEOUT_SECONDS` 将超时 running job 重置为 pending，便于 worker 崩溃或中断后的自动恢复。
 - 完整管理后台仍未完成：还缺少用户/角色/组织管理、更完整的批量运维操作和权限分层 UI。
 
 ### 生产部署
@@ -1428,19 +1429,20 @@ OPENAI_API_KEY
 32. 导出任务异步化：worker 执行和文件落地。已完成。
 33. 导出任务异步化：下载接口和前端轮询。已完成。
 34. 导出 worker 常驻服务和 production compose 编排。已完成。
+35. 导出任务运维补强：running 超时恢复。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-导出任务运维补强：清理、重试和超时策略
+导出任务运维补强：过期文件清理和失败重试策略
 ```
 
 原因：
 
-- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker 和 production compose 编排已完成。
-- 下一步可以补充导出任务的过期文件清理、失败任务重试、长时间 running 任务超时恢复，以及相应的运维文档/测试。
+- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker、production compose 编排和 running 超时恢复已完成。
+- 下一步可以补充导出任务的过期文件清理、失败任务重试，以及相应的运维文档/测试。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

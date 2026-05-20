@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     sync_database_url: str = "postgresql+psycopg://rag:rag@localhost:5432/rag"
     export_storage_dir: str = "exports"
     export_worker_poll_interval_seconds: float = Field(default=5.0, gt=0)
+    export_job_running_timeout_seconds: float = Field(default=3600.0, gt=0)
     embedding_provider: Literal["fake", "openai"] = "fake"
     embedding_model: str = "fake-embedding"
     embedding_dimension: int = 1536

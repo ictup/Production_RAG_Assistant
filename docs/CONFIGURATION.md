@@ -125,6 +125,7 @@ contextualized before retrieval.
 | `SYNC_DATABASE_URL` | local psycopg URL | Yes | Sync database URL for Alembic migrations. |
 | `EXPORT_STORAGE_DIR` | `exports` | No | Directory where export worker output files are written. Relative paths resolve from the process working directory. Use a mounted persistent volume in production-style deployments. |
 | `EXPORT_WORKER_POLL_INTERVAL_SECONDS` | `5` | No | Poll interval for `python -m backend.app.exporting.worker --loop` when no pending export job is available or an iteration-level error occurs. |
+| `EXPORT_JOB_RUNNING_TIMEOUT_SECONDS` | `3600` | No | Maximum time an export job can remain `running` before a worker treats it as stale and resets it to `pending` for reprocessing. |
 
 ### Embeddings
 

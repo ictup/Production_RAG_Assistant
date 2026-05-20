@@ -133,6 +133,10 @@ Follow export worker logs:
 docker compose -f docker-compose.prod.yml logs -f export-worker
 ```
 
+If a worker process exits after marking a job `running` but before completing
+it, the next worker iteration resets the job to `pending` after
+`EXPORT_JOB_RUNNING_TIMEOUT_SECONDS`. The default timeout is `3600` seconds.
+
 View migration logs:
 
 ```powershell
