@@ -114,7 +114,9 @@ def test_static_app_serves_assets() -> None:
     assert "syncWorkspaceEditForm" in script_response.text
     assert "optionalText" in script_response.text
     assert "buildChatLogsUrl" in script_response.text
-    assert "buildChatLogsExportUrl" in script_response.text
+    assert "buildExportJobPayload" in script_response.text
+    assert "buildExportJobDownloadUrl" in script_response.text
+    assert "buildChatLogExportFilters" in script_response.text
     assert "buildWorkspaceAuditLogsUrl" in script_response.text
     assert "buildWorkspaceAuditLogParams" in script_response.text
     assert "readAdminAuditFilters" in script_response.text
@@ -128,7 +130,11 @@ def test_static_app_serves_assets() -> None:
     assert "created_from" in script_response.text
     assert "created_to" in script_response.text
     assert "exportAdminLogs" in script_response.text
-    assert "/chat/logs/export?" in script_response.text
+    assert 'apiFetch("/exports/jobs"' in script_response.text
+    assert "/exports/jobs/${encodeURIComponent(jobId)}" in script_response.text
+    assert "/download" in script_response.text
+    assert "pollExportJob" in script_response.text
+    assert "filenameFromContentDisposition" in script_response.text
     assert "readAdminFilters" in script_response.text
     assert "refusal_only" in script_response.text
     assert "buildChatLogAuditDetails" in script_response.text

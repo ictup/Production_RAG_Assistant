@@ -93,6 +93,7 @@ docs/EVAL_TRENDS.md
 - export job 创建接口：`POST /exports/jobs`
 - export job 列表接口：`GET /exports/jobs`
 - export job 详情接口：`GET /exports/jobs/{job_id}`
+- export job 下载接口：`GET /exports/jobs/{job_id}/download`
 - Prometheus 指标接口：`GET /metrics`
 - API key 鉴权：`Authorization: Bearer dev-key`
 - workspace 隔离头：`X-Workspace-ID`
@@ -104,8 +105,8 @@ docs/EVAL_TRENDS.md
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency/cost 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
-- 异步导出 job 基础模型、API 与 worker：`export_jobs` 表和 `ExportJobRepository` 已支持 pending/running/succeeded/failed 状态流转，`/exports/jobs` 已支持创建、列表和详情查询，`python -m backend.app.exporting.worker` 可执行一个 pending chat log 导出任务并落地 JSONL/CSV 文件
-- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、编辑、归档、恢复、workspace 搜索、分页、状态过滤、当前页批量归档/恢复和跨页匹配批量预览/确认、归档 workspace 写入控件禁用、只读 admin overview、chat log audit filters、chat log audit export、chat log audit details、workspace operation audit filters 和 workspace operation audit details
+- 异步导出 job 基础模型、API、worker 与下载接口：`export_jobs` 表和 `ExportJobRepository` 已支持 pending/running/succeeded/failed 状态流转，`/exports/jobs` 已支持创建、列表、详情和下载查询，`python -m backend.app.exporting.worker` 可执行一个 pending chat log 导出任务并落地 JSONL/CSV 文件
+- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、编辑、归档、恢复、workspace 搜索、分页、状态过滤、当前页批量归档/恢复和跨页匹配批量预览/确认、归档 workspace 写入控件禁用、只读 admin overview、chat log audit filters、chat log async export job creation/poll/download、chat log audit details、workspace operation audit filters 和 workspace operation audit details
 
 ### 数据库与迁移
 
@@ -1290,7 +1291,8 @@ Completed: 2026-05-20T09:51:56Z
 - export job 基础模型已完成：新增 `export_jobs` 表、`ExportJobRepository`、pending -> running -> succeeded/failed 状态流转和 worker claim 入口。
 - export job API 已完成：`POST /exports/jobs` 可按当前 `X-Workspace-ID` 创建 chat log 导出任务，`GET /exports/jobs` 支持 status/export_type 分页查询，`GET /exports/jobs/{job_id}` 可按 workspace 读取任务详情；现有 `/chat/logs/export` 仍保持同步。
 - export worker 基础版已完成：`backend.app.exporting.worker` 会 claim 一个 pending job，按 filters 查询 chat logs，复用同步导出的 JSONL/CSV 序列化，写入 `EXPORT_STORAGE_DIR`，并将 job 标记为 succeeded/failed。
-- 完整管理后台仍未完成：还缺少用户/角色/组织管理、导出任务下载 API/前端轮询、更完整的批量运维操作和权限分层 UI。
+- export 下载接口和前端轮询已完成：`GET /exports/jobs/{job_id}/download` 只允许下载当前 workspace 下 succeeded job 的 `EXPORT_STORAGE_DIR` 内部文件，Admin export JSONL/CSV 按钮会创建 job、轮询详情并在 succeeded 后触发下载。
+- 完整管理后台仍未完成：还缺少用户/角色/组织管理、导出 worker 常驻化/生产编排、更完整的批量运维操作和权限分层 UI。
 
 ### 生产部署
 
@@ -1415,19 +1417,20 @@ OPENAI_API_KEY
 30. 导出任务异步化：job 表和后台执行模型。已完成。
 31. 导出任务异步化：创建/查询 job API。已完成。
 32. 导出任务异步化：worker 执行和文件落地。已完成。
+33. 导出任务异步化：下载接口和前端轮询。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-导出任务异步化：下载接口和前端轮询
+导出 worker 常驻服务和生产 compose 编排
 ```
 
 原因：
 
-- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行和文件落地已完成。
-- 下一步可以新增下载接口和前端轮询：前端创建 job 后轮询 status，job succeeded 后通过安全下载接口取回 `result_uri` 对应文件。
+- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口和前端轮询已完成。
+- 下一步可以把当前 one-shot worker 升级为可持续运行的 worker 服务，并在 production compose 中为它配置共享 `EXPORT_STORAGE_DIR` volume、健康/重启策略和运行说明。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

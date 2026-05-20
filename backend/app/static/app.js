@@ -35,6 +35,9 @@ const state = {
   sending: false,
 };
 
+const EXPORT_JOB_MAX_POLL_ATTEMPTS = 8;
+const EXPORT_JOB_POLL_INTERVAL_MS = 1000;
+
 const els = {
   apiKey: document.querySelector("#api-key"),
   workspaceId: document.querySelector("#workspace-id"),
@@ -826,13 +829,39 @@ function buildMatchingWorkspacesPreviewUrl() {
   return `/workspaces/bulk/preview?${params.toString()}`;
 }
 
-function buildChatLogsExportUrl(format) {
-  const params = buildChatLogParams({
+function buildExportJobPayload(format) {
+  return {
+    export_type: "chat_logs",
+    format,
+    filters: buildChatLogExportFilters({
+      limit: 1000,
+      offset: 0,
+    }),
+  };
+}
+
+function buildExportJobDownloadUrl(jobId) {
+  return `/exports/jobs/${encodeURIComponent(jobId)}/download`;
+}
+
+function buildChatLogExportFilters({ limit, offset }) {
+  const filters = {
     limit: 1000,
     offset: 0,
-  });
-  params.set("format", format);
-  return `/chat/logs/export?${params.toString()}`;
+    refusal_only: state.admin.filters.refusalOnly,
+  };
+  filters.limit = limit;
+  filters.offset = offset;
+  if (state.admin.filters.requestId) {
+    filters.request_id = state.admin.filters.requestId;
+  }
+  if (state.admin.filters.sessionId) {
+    filters.session_id = state.admin.filters.sessionId;
+  }
+  if (state.admin.filters.citationValid) {
+    filters.citation_valid = state.admin.filters.citationValid === "true";
+  }
+  return filters;
 }
 
 function buildChatLogParams({ limit, offset }) {
@@ -1136,20 +1165,59 @@ function formatMetadataJson(value) {
 async function exportAdminLogs(format) {
   readAdminFilters();
   const extension = format === "csv" ? "csv" : "jsonl";
-  setAdminStatus(`Exporting ${extension.toUpperCase()}`);
+  setAdminExportButtonsDisabled(true);
+  setAdminStatus(`Creating ${extension.toUpperCase()} export job`);
   try {
-    const response = await apiFetch(buildChatLogsExportUrl(extension));
-    const blob = await response.blob();
+    const createResponse = await apiFetch("/exports/jobs", {
+      method: "POST",
+      body: JSON.stringify(buildExportJobPayload(extension)),
+    });
+    const createBody = await createResponse.json();
+    const job = createBody.job;
+    setAdminStatus(`Export job ${formatShortId(job.id)} queued`);
+    const readyJob = await pollExportJob(job.id);
+    const downloadResponse = await apiFetch(buildExportJobDownloadUrl(readyJob.id));
+    const blob = await downloadResponse.blob();
     downloadBlob(
       blob,
-      `rag-chat-logs-${formatFilenamePart(state.workspaceId)}-${formatTimestampForFilename(
-        new Date(),
-      )}.${extension}`,
+      filenameFromContentDisposition(downloadResponse.headers) ||
+        `rag-chat-logs-${formatFilenamePart(state.workspaceId)}-${formatTimestampForFilename(
+          new Date(),
+        )}.${extension}`,
     );
     setAdminStatus(`Exported ${extension.toUpperCase()}`);
   } catch (error) {
     setAdminError(error.message);
+  } finally {
+    setAdminExportButtonsDisabled(false);
   }
+}
+
+async function pollExportJob(jobId) {
+  let latestJob = null;
+  for (let attempt = 0; attempt < EXPORT_JOB_MAX_POLL_ATTEMPTS; attempt += 1) {
+    const response = await apiFetch(`/exports/jobs/${encodeURIComponent(jobId)}`);
+    const body = await response.json();
+    latestJob = body.job;
+    if (latestJob.status === "succeeded") {
+      return latestJob;
+    }
+    if (latestJob.status === "failed") {
+      throw createAppError(latestJob.error_message || "export job failed");
+    }
+    setAdminStatus(`Export job ${formatShortId(jobId)} ${latestJob.status}`);
+    if (attempt < EXPORT_JOB_MAX_POLL_ATTEMPTS - 1) {
+      await delay(EXPORT_JOB_POLL_INTERVAL_MS);
+    }
+  }
+  throw createAppError(
+    `Export job ${formatShortId(jobId)} is still ${latestJob?.status || "pending"}`,
+  );
+}
+
+function setAdminExportButtonsDisabled(disabled) {
+  els.exportAdminJsonl.disabled = disabled;
+  els.exportAdminCsv.disabled = disabled;
 }
 
 function downloadBlob(blob, filename) {
@@ -1161,6 +1229,29 @@ function downloadBlob(blob, filename) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function filenameFromContentDisposition(headers) {
+  const disposition = headers.get("content-disposition");
+  if (!disposition) {
+    return null;
+  }
+  const encodedMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encodedMatch) {
+    return decodeURIComponent(encodedMatch[1].replace(/["]/g, ""));
+  }
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch ? plainMatch[1] : null;
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
+}
+
+function formatShortId(value) {
+  return String(value || "unknown").slice(0, 8);
 }
 
 async function loadMarkdownFile() {

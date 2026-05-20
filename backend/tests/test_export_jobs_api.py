@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 from hashlib import sha256
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -160,6 +161,7 @@ def test_openapi_exposes_export_job_routes() -> None:
     paths = response.json()["paths"]
     assert "/exports/jobs" in paths
     assert "/exports/jobs/{job_id}" in paths
+    assert "/exports/jobs/{job_id}/download" in paths
 
 
 def test_create_export_job_creates_pending_job_for_workspace() -> None:
@@ -394,3 +396,100 @@ def test_get_export_job_returns_404_when_not_found() -> None:
     assert response.status_code == 404
     assert response.json() == {"detail": "export job not found"}
     assert fake_export_job_repository.detail_calls == [(job_id, "tenant-a")]
+
+
+def test_download_export_job_returns_file_for_succeeded_job(tmp_path: Path) -> None:
+    job_id = uuid.UUID("55555555-5555-5555-5555-555555555555")
+    result_path = tmp_path / "chat-logs-tenant-a.csv"
+    result_path.write_text("request_id,workspace_id\nrequest-1,tenant-a\n")
+    export_job = make_export_job_model(status="succeeded", export_format="csv")
+    export_job.result_uri = result_path.resolve().as_uri()
+    export_job.result_media_type = "text/csv; charset=utf-8"
+    export_job.result_size_bytes = result_path.stat().st_size
+    fake_export_job_repository = FakeExportJobRepository(detail_job=export_job)
+    client = build_client(
+        fake_export_job_repository,
+        settings=Settings(api_keys="dev-key", export_storage_dir=str(tmp_path)),
+    )
+
+    response = client.get(
+        f"/exports/jobs/{job_id}/download",
+        headers={**AUTH_HEADERS, "X-Workspace-ID": "tenant-a"},
+    )
+
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert 'filename="chat-logs-tenant-a.csv"' in response.headers[
+        "content-disposition"
+    ]
+    assert response.text.replace("\r\n", "\n") == (
+        "request_id,workspace_id\nrequest-1,tenant-a\n"
+    )
+    assert fake_export_job_repository.detail_calls == [(job_id, "tenant-a")]
+
+
+def test_download_export_job_rejects_pending_job(tmp_path: Path) -> None:
+    job_id = uuid.UUID("55555555-5555-5555-5555-555555555555")
+    fake_export_job_repository = FakeExportJobRepository(
+        detail_job=make_export_job_model(status="pending")
+    )
+    client = build_client(
+        fake_export_job_repository,
+        settings=Settings(api_keys="dev-key", export_storage_dir=str(tmp_path)),
+    )
+
+    response = client.get(
+        f"/exports/jobs/{job_id}/download",
+        headers={**AUTH_HEADERS, "X-Workspace-ID": "tenant-a"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "export job not ready"}
+
+
+def test_download_export_job_rejects_result_outside_storage_dir(
+    tmp_path: Path,
+) -> None:
+    job_id = uuid.UUID("55555555-5555-5555-5555-555555555555")
+    storage_dir = tmp_path / "exports"
+    storage_dir.mkdir()
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    outside_file = outside_dir / "chat-logs-tenant-a.jsonl"
+    outside_file.write_text("{}\n")
+    export_job = make_export_job_model(status="succeeded")
+    export_job.result_uri = outside_file.resolve().as_uri()
+    export_job.result_media_type = "application/x-ndjson; charset=utf-8"
+    fake_export_job_repository = FakeExportJobRepository(detail_job=export_job)
+    client = build_client(
+        fake_export_job_repository,
+        settings=Settings(api_keys="dev-key", export_storage_dir=str(storage_dir)),
+    )
+
+    response = client.get(
+        f"/exports/jobs/{job_id}/download",
+        headers={**AUTH_HEADERS, "X-Workspace-ID": "tenant-a"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "export file not found"}
+
+
+def test_download_export_job_rejects_non_file_result_uri(tmp_path: Path) -> None:
+    job_id = uuid.UUID("55555555-5555-5555-5555-555555555555")
+    export_job = make_export_job_model(status="succeeded")
+    export_job.result_uri = "https://example.com/export.jsonl"
+    export_job.result_media_type = "application/x-ndjson; charset=utf-8"
+    fake_export_job_repository = FakeExportJobRepository(detail_job=export_job)
+    client = build_client(
+        fake_export_job_repository,
+        settings=Settings(api_keys="dev-key", export_storage_dir=str(tmp_path)),
+    )
+
+    response = client.get(
+        f"/exports/jobs/{job_id}/download",
+        headers={**AUTH_HEADERS, "X-Workspace-ID": "tenant-a"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "export result is not a local file"}

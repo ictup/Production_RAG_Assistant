@@ -278,8 +278,9 @@ Asynchronous export groundwork is represented by the `export_jobs` table,
 `ExportJobRepository`, `/exports/jobs` API, and export worker. Jobs start as
 `pending`, can be claimed by a worker as `running`, and then finish as
 `succeeded` or `failed`. Worker output is written under `EXPORT_STORAGE_DIR`.
-The existing `/chat/logs/export` route remains synchronous until the download
-and UI steps are wired in.
+Admin export buttons create a job, poll its status, and download the completed
+file through `/exports/jobs/{job_id}/download`. The existing `/chat/logs/export`
+route remains synchronous for compatibility.
 
 Create and inspect an export job:
 
@@ -299,6 +300,15 @@ Run one worker pass:
 
 ```powershell
 uv run python -m backend.app.exporting.worker
+```
+
+Download a completed job:
+
+```powershell
+curl.exe "http://127.0.0.1:8000/exports/jobs/<job-id>/download" `
+  -H "Authorization: Bearer dev-key" `
+  -H "X-Workspace-ID: public" `
+  -o chat-logs.jsonl
 ```
 
 Archived workspaces remain readable for audit and recovery, but write-oriented
