@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     rate_limit_excluded_paths: str = (
         "/health,/metrics,/app,/openapi.json,/docs,/redoc"
     )
+    query_rewriter_provider: Literal["none", "openai"] = "none"
+    query_rewrite_model: str = "gpt-5.4-nano"
+    query_rewrite_max_output_tokens: int = Field(default=64, gt=0)
     reranker_provider: Literal["none", "openai"] = "none"
     reranker_model: str = "gpt-5.4-nano"
     rerank_top_n: int = 5

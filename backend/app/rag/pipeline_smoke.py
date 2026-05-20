@@ -8,6 +8,7 @@ from backend.app.rag.pipeline import ChatPipelineRequest, RagPipeline
 
 ProviderName = Literal["fake", "openai"]
 RerankerProviderName = Literal["none", "openai"]
+QueryRewriterProviderName = Literal["none", "openai"]
 
 
 async def run_pipeline_smoke(
@@ -55,9 +56,12 @@ def build_pipeline_smoke_settings(
     *,
     embedding_provider: ProviderName | None = None,
     generator_provider: ProviderName | None = None,
+    query_rewriter_provider: QueryRewriterProviderName | None = None,
     reranker_provider: RerankerProviderName | None = None,
     llm_model: str | None = None,
+    query_rewrite_model: str | None = None,
     reranker_model: str | None = None,
+    query_rewrite_max_output_tokens: int | None = None,
     openai_max_output_tokens: int | None = None,
 ) -> Settings:
     settings = settings or get_settings()
@@ -66,12 +70,22 @@ def build_pipeline_smoke_settings(
         updates["embedding_provider"] = embedding_provider
     if generator_provider is not None:
         updates["generator_provider"] = generator_provider
+    if query_rewriter_provider is not None:
+        updates["query_rewriter_provider"] = query_rewriter_provider
     if reranker_provider is not None:
         updates["reranker_provider"] = reranker_provider
     if llm_model is not None:
         updates["llm_model"] = llm_model
+    if query_rewrite_model is not None:
+        updates["query_rewrite_model"] = query_rewrite_model
     if reranker_model is not None:
         updates["reranker_model"] = reranker_model
+    if query_rewrite_max_output_tokens is not None:
+        if query_rewrite_max_output_tokens <= 0:
+            raise ValueError(
+                "query_rewrite_max_output_tokens must be greater than zero"
+            )
+        updates["query_rewrite_max_output_tokens"] = query_rewrite_max_output_tokens
     if openai_max_output_tokens is not None:
         if openai_max_output_tokens <= 0:
             raise ValueError("openai_max_output_tokens must be greater than zero")
@@ -108,6 +122,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override RERANKER_PROVIDER for this smoke run.",
     )
     parser.add_argument(
+        "--query-rewriter-provider",
+        choices=["none", "openai"],
+        default=None,
+        help="Override QUERY_REWRITER_PROVIDER for this smoke run.",
+    )
+    parser.add_argument(
         "--llm-model",
         default=None,
         help="Override LLM_MODEL for this smoke run.",
@@ -116,6 +136,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--reranker-model",
         default=None,
         help="Override RERANKER_MODEL for this smoke run.",
+    )
+    parser.add_argument(
+        "--query-rewrite-model",
+        default=None,
+        help="Override QUERY_REWRITE_MODEL for this smoke run.",
+    )
+    parser.add_argument(
+        "--query-rewrite-max-output-tokens",
+        type=int,
+        default=None,
+        help="Override QUERY_REWRITE_MAX_OUTPUT_TOKENS for this smoke run.",
     )
     parser.add_argument(
         "--openai-max-output-tokens",
@@ -131,9 +162,12 @@ async def async_main(argv: list[str] | None = None) -> int:
     settings = build_pipeline_smoke_settings(
         embedding_provider=args.embedding_provider,
         generator_provider=args.generator_provider,
+        query_rewriter_provider=args.query_rewriter_provider,
         reranker_provider=args.reranker_provider,
         llm_model=args.llm_model,
+        query_rewrite_model=args.query_rewrite_model,
         reranker_model=args.reranker_model,
+        query_rewrite_max_output_tokens=args.query_rewrite_max_output_tokens,
         openai_max_output_tokens=args.openai_max_output_tokens,
     )
     return await run_pipeline_smoke(

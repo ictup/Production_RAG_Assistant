@@ -265,25 +265,34 @@ def test_build_eval_settings_applies_runtime_overrides() -> None:
         Settings(
             embedding_provider="fake",
             generator_provider="fake",
+            query_rewriter_provider="none",
             reranker_provider="none",
+            query_rewrite_model="gpt-default",
             llm_model="fake-llm",
             reranker_model="gpt-default",
+            query_rewrite_max_output_tokens=64,
             openai_api_key="test-key",
             openai_max_output_tokens=512,
         ),
         embedding_provider="openai",
         generator_provider="openai",
+        query_rewriter_provider="openai",
         reranker_provider="openai",
+        query_rewrite_model="gpt-rewrite",
         llm_model="gpt-test",
         reranker_model="gpt-rerank",
+        query_rewrite_max_output_tokens=32,
         openai_max_output_tokens=123,
     )
 
     assert settings.embedding_provider == "openai"
     assert settings.generator_provider == "openai"
+    assert settings.query_rewriter_provider == "openai"
     assert settings.reranker_provider == "openai"
+    assert settings.query_rewrite_model == "gpt-rewrite"
     assert settings.llm_model == "gpt-test"
     assert settings.reranker_model == "gpt-rerank"
+    assert settings.query_rewrite_max_output_tokens == 32
     assert settings.openai_max_output_tokens == 123
 
 
@@ -304,6 +313,14 @@ def test_build_eval_settings_rejects_invalid_output_limit() -> None:
         build_eval_settings(
             Settings(openai_api_key="test-key"),
             openai_max_output_tokens=0,
+        )
+
+
+def test_build_eval_settings_rejects_invalid_rewrite_output_limit() -> None:
+    with pytest.raises(ValueError, match="query_rewrite_max_output_tokens"):
+        build_eval_settings(
+            Settings(openai_api_key="test-key"),
+            query_rewrite_max_output_tokens=0,
         )
 
 

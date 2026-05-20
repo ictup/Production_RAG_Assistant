@@ -11,6 +11,7 @@ from backend.app.core.tracing import TRACE_LOGGER_NAME, trace_context
 from backend.app.rag.embeddings import FakeEmbeddingClient
 from backend.app.rag.generation import FakeGenerator
 from backend.app.rag.pipeline import ChatPipelineRequest, RagPipeline
+from backend.app.rag.query_rewriting import QueryRewriteResult
 from backend.app.rag.refusal import REFUSAL_ANSWER
 from backend.app.rag.reranking import NoOpReranker
 
@@ -36,6 +37,35 @@ class FakeAsyncSession:
 class FakeRow:
     def __init__(self, **mapping):
         self._mapping = mapping
+
+
+class RecordingEmbeddingClient(FakeEmbeddingClient):
+    def __init__(self, *, dimension: int, model_name: str) -> None:
+        super().__init__(dimension=dimension, model_name=model_name)
+        self.queries: list[str] = []
+
+    async def embed_query(self, query: str) -> list[float]:
+        self.queries.append(query)
+        return await super().embed_query(query)
+
+
+class StaticQueryRewriter:
+    provider_name = "test"
+    model_name = "test-rewrite"
+
+    def __init__(self, rewritten_query: str) -> None:
+        self.rewritten_query = rewritten_query
+        self.questions: list[str] = []
+
+    async def rewrite(self, *, question: str, metadata_filter=None):
+        self.questions.append(question)
+        return QueryRewriteResult(
+            original_query=question,
+            rewritten_query=self.rewritten_query,
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            rewritten=self.rewritten_query != question,
+        )
 
 
 def make_settings() -> Settings:
@@ -160,6 +190,46 @@ async def test_pipeline_passes_metadata_filter_to_retrievers() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pipeline_uses_rewritten_query_for_retrieval() -> None:
+    chunk_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    session = FakeAsyncSession(
+        [
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+        ]
+    )
+    embedding_client = RecordingEmbeddingClient(
+        dimension=1536,
+        model_name="test-fake-embedding",
+    )
+    query_rewriter = StaticQueryRewriter("FlashAttention memory traffic HBM SRAM")
+    pipeline = RagPipeline(
+        session=session,  # type: ignore[arg-type]
+        settings=make_settings(),
+        embedding_client=embedding_client,
+        query_rewriter=query_rewriter,
+        reranker=NoOpReranker(),
+        generator=FakeGenerator(model_name="test-fake-llm"),
+    )
+
+    response = await pipeline.answer_question(
+        ChatPipelineRequest(question="What problem does FlashAttention solve?")
+    )
+
+    assert query_rewriter.questions == ["What problem does FlashAttention solve?"]
+    assert embedding_client.queries == ["FlashAttention memory traffic HBM SRAM"]
+    assert response.retrieval.query_rewrite.provider == "test"
+    assert response.retrieval.query_rewrite.model == "test-rewrite"
+    assert response.retrieval.query_rewrite.rewritten is True
+    assert response.retrieval.query_rewrite.retrieval_query == (
+        "FlashAttention memory traffic HBM SRAM"
+    )
+    sparse_statement = str(session.statements[1].compile().params)
+    assert "FlashAttention memory traffic HBM SRAM" in sparse_statement
+
+
+@pytest.mark.asyncio
 async def test_pipeline_estimates_generation_cost_from_configured_prices() -> None:
     chunk_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -231,6 +301,7 @@ async def test_pipeline_emits_trace_spans_when_trace_context_exists(caplog) -> N
     }
     assert {
         "rag.question_guard",
+        "rag.query_rewrite",
         "rag.embedding",
         "rag.vector_retrieval",
         "rag.sparse_retrieval",

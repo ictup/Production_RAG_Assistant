@@ -161,9 +161,12 @@ def test_build_trend_metadata_captures_runtime_settings() -> None:
         embedding_provider="openai",
         embedding_model="text-embedding-3-small",
         generator_provider="openai",
+        query_rewriter_provider="openai",
         reranker_provider="openai",
+        query_rewrite_model="gpt-rewrite",
         llm_model="gpt-test",
         reranker_model="gpt-rerank",
+        query_rewrite_max_output_tokens=32,
         openai_api_key="test-key",
         openai_max_output_tokens=321,
     )
@@ -177,6 +180,8 @@ def test_build_trend_metadata_captures_runtime_settings() -> None:
         "embedding_model": "text-embedding-3-small",
         "generator_provider": "openai",
         "llm_model": "gpt-test",
+        "query_rewriter_provider": "openai",
+        "query_rewrite_model": "gpt-rewrite",
         "reranker_provider": "openai",
         "reranker_model": "gpt-rerank",
         "vector_top_k": 7,
@@ -184,6 +189,7 @@ def test_build_trend_metadata_captures_runtime_settings() -> None:
         "fused_top_k": 9,
         "rerank_top_n": 3,
         "rerank": False,
+        "query_rewrite_max_output_tokens": 32,
         "openai_max_output_tokens": 321,
     }
 

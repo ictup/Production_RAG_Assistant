@@ -56,7 +56,7 @@ docs/EVAL_TRENDS.md
 
 这是一个生产风格的 RAG assistant 后端项目。当前阶段已经完成了可本地运行、可 ingest、可检索、可回答、可记录日志、可评测、可 CI 回归的后端 MVP。
 
-当前默认仍然使用 fake generator 和 no-op reranker。embedding、generator 和 reranker 都可以在本地默认模式和 OpenAI 之间切换；只有把对应 provider 改为 `openai` 并配置 `OPENAI_API_KEY` 后才会发真实 OpenAI API 请求。
+当前默认仍然使用 fake generator、no-op query rewriter 和 no-op reranker。embedding、query rewriter、generator 和 reranker 都可以在本地默认模式和 OpenAI 之间切换；只有把对应 provider 改为 `openai` 并配置 `OPENAI_API_KEY` 后才会发真实 OpenAI API 请求。
 
 ## 2. 已完成的主要工作
 
@@ -125,6 +125,8 @@ docs/EVAL_TRENDS.md
 
 - fake embedding client
 - OpenAI embedding client
+- no-op query rewriter
+- OpenAI Responses API query rewriter
 - vector retrieval
 - sparse retrieval
 - metadata filter for vector/sparse retrieval
@@ -277,6 +279,9 @@ SYNC_DATABASE_URL=postgresql+psycopg://rag:rag@localhost:5433/rag
 ```text
 EMBEDDING_PROVIDER=fake
 GENERATOR_PROVIDER=fake
+QUERY_REWRITER_PROVIDER=none
+QUERY_REWRITE_MODEL=gpt-5.4-nano
+QUERY_REWRITE_MAX_OUTPUT_TOKENS=64
 RERANKER_PROVIDER=none
 RERANKER_MODEL=gpt-5.4-nano
 API_KEYS=dev-key
@@ -321,6 +326,16 @@ PROVIDER_PRICE_TABLE=openai:gpt-example:input=0.00,output=0.00
 GENERATOR_PROVIDER=openai
 LLM_MODEL=gpt-5.4-nano
 ```
+
+如果要启用 OpenAI query rewrite，可以继续设置：
+
+```text
+QUERY_REWRITER_PROVIDER=openai
+QUERY_REWRITE_MODEL=gpt-5.4-nano
+QUERY_REWRITE_MAX_OUTPUT_TOKENS=64
+```
+
+OpenAI query rewriter 会在 question guard 之后、embedding/sparse retrieval 之前调用 Responses API，把用户原始问题改写成更适合检索的短查询；默认 `QUERY_REWRITER_PROVIDER=none` 不会产生额外外部请求。
 
 如果要启用 OpenAI reranker，可以继续设置：
 
@@ -782,7 +797,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-396 passed
+427 passed
 ```
 
 ### Pipeline Smoke
@@ -803,6 +818,12 @@ uv run python -m backend.app.rag.pipeline_smoke --embedding-provider openai --ge
 uv run python -m backend.app.rag.pipeline_smoke --embedding-provider openai --generator-provider openai --reranker-provider openai --llm-model gpt-5.4-nano --reranker-model gpt-5.4-nano
 ```
 
+如果还要把真实 query rewrite 纳入端到端 smoke，可以继续加 query rewrite override：
+
+```powershell
+uv run python -m backend.app.rag.pipeline_smoke --embedding-provider openai --generator-provider openai --query-rewriter-provider openai --llm-model gpt-5.4-nano --query-rewrite-model gpt-5.4-nano
+```
+
 ### Eval Gate
 
 ```powershell
@@ -819,6 +840,12 @@ uv run python -m evals.run --format summary --fail-on-failure --no-output --embe
 
 ```powershell
 uv run python -m evals.run --format summary --fail-on-failure --no-output --embedding-provider openai --generator-provider openai --reranker-provider openai --llm-model gpt-5.4-nano --reranker-model gpt-5.4-nano
+```
+
+真实 OpenAI eval 加真实 query rewrite：
+
+```powershell
+uv run python -m evals.run --format summary --fail-on-failure --no-output --embedding-provider openai --generator-provider openai --query-rewriter-provider openai --llm-model gpt-5.4-nano --query-rewrite-model gpt-5.4-nano
 ```
 
 当前 eval 基线：
@@ -964,7 +991,8 @@ flowchart TD
     C --> D["Embeddings stored in pgvector"]
     E["POST /chat"] --> F["API key and workspace"]
     F --> G["Question-level refusal guard"]
-    G --> MF["Optional metadata_filter"]
+    G --> QR["Optional query rewrite"]
+    QR --> MF["Optional metadata_filter"]
     MF --> H["Vector retrieval"]
     MF --> I["Sparse retrieval"]
     H --> J["RRF fusion"]
@@ -1061,9 +1089,10 @@ Repository -> Settings -> Actions -> General
 - OpenAI generator provider 已有代码和 smoke CLI。
 - OpenAI provider 超时、有限重试和错误分类。
 - OpenAI provider API 错误响应、结构化日志和 metrics。
-- provider API key 配置校验目前覆盖 OpenAI embedding、OpenAI generator 和 OpenAI reranker。
+- provider API key 配置校验目前覆盖 OpenAI embedding、OpenAI generator、OpenAI query rewriter 和 OpenAI reranker。
 - provider token 统计和 embedding/generation latency 细分指标。
 - OpenAI Responses API streaming 已接入 generator 和 `/chat/stream`。
+- OpenAI Responses API query rewriter 已完成，默认仍为 no-op，可用 `QUERY_REWRITER_PROVIDER=openai` 启用。
 - OpenAI Responses API listwise reranker 已完成，默认仍为 no-op，可用 `RERANKER_PROVIDER=openai` 启用。
 - metadata filter 基础版已接入 `/chat` 和 `/chat/stream`，会应用到 vector/sparse retrieval 的 `document_chunks.metadata @>` 条件。
 - provider generation token 成本估算基础版已完成：`PROVIDER_PRICE_TABLE`、响应 usage cost 字段、Prometheus `rag_provider_cost_usd_total`。
@@ -1072,7 +1101,6 @@ Repository -> Settings -> Actions -> General
 ### 检索质量
 
 - 更大的文档集合。
-- 更强的 query rewrite。
 - 多轮对话里的 query contextualization。
 
 ### 产品 API
@@ -1146,6 +1174,7 @@ Repository -> Settings -> Actions -> General
 6. 增加 provider API 错误响应和 metrics。
 7. 根据业务需要增加配置化 provider price table，把 token usage 转成成本估算。
 8. 接入真实 OpenAI reranker。已完成。
+9. 接入真实 OpenAI query rewrite。已完成。
 
 需要你提供：
 
@@ -1207,7 +1236,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-query rewrite
+multi-turn query contextualization
 ```
 
 原因：
@@ -1220,7 +1249,7 @@ query rewrite
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- metadata filter 基础版已完成，下一步补 query rewrite，可以把用户口语化问题先规范成更适合 hybrid retrieval 的查询。
+- query rewrite 已完成，下一步补多轮 query contextualization，让 follow-up 问题能结合 chat history 形成独立检索查询。
 
 启用 OpenAI embedding 后可以先跑：
 
@@ -1246,6 +1275,12 @@ uv run python -m backend.app.rag.generator_smoke --provider openai --model gpt-5
 uv run python -m backend.app.rag.rerank_smoke --reranker-provider openai --reranker-model gpt-5.4-nano
 ```
 
+验证 query rewrite 需要通过 pipeline 或 eval 临时启用：
+
+```powershell
+uv run python -m backend.app.rag.pipeline_smoke --embedding-provider openai --generator-provider openai --query-rewriter-provider openai --llm-model gpt-5.4-nano --query-rewrite-model gpt-5.4-nano
+```
+
 真实端到端 smoke：
 
 ```powershell
@@ -1258,6 +1293,12 @@ uv run python -m backend.app.rag.pipeline_smoke --embedding-provider openai --ge
 uv run python -m backend.app.rag.pipeline_smoke --embedding-provider openai --generator-provider openai --reranker-provider openai --llm-model gpt-5.4-nano --reranker-model gpt-5.4-nano
 ```
 
+真实端到端 smoke 加 query rewrite 和 reranker：
+
+```powershell
+uv run python -m backend.app.rag.pipeline_smoke --embedding-provider openai --generator-provider openai --query-rewriter-provider openai --reranker-provider openai --llm-model gpt-5.4-nano --query-rewrite-model gpt-5.4-nano --reranker-model gpt-5.4-nano
+```
+
 真实 eval gate：
 
 ```powershell
@@ -1268,6 +1309,12 @@ uv run python -m evals.run --format summary --fail-on-failure --no-output --embe
 
 ```powershell
 uv run python -m evals.run --format summary --fail-on-failure --no-output --embedding-provider openai --generator-provider openai --reranker-provider openai --llm-model gpt-5.4-nano --reranker-model gpt-5.4-nano
+```
+
+真实 eval gate 加 query rewrite 和 reranker：
+
+```powershell
+uv run python -m evals.run --format summary --fail-on-failure --no-output --embedding-provider openai --generator-provider openai --query-rewriter-provider openai --reranker-provider openai --llm-model gpt-5.4-nano --query-rewrite-model gpt-5.4-nano --reranker-model gpt-5.4-nano
 ```
 
 ## 15. 快速故障排查

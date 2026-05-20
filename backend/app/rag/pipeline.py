@@ -14,6 +14,11 @@ from backend.app.rag.fusion import reciprocal_rank_fusion
 from backend.app.rag.generation import Generator, build_generator
 from backend.app.rag.metadata_filters import normalize_metadata_filter
 from backend.app.rag.prompts import build_rag_prompt
+from backend.app.rag.query_rewriting import (
+    QueryRewriter,
+    QueryRewriteResult,
+    build_query_rewriter,
+)
 from backend.app.rag.refusal import (
     REFUSAL_ANSWER,
     RefusalInfo,
@@ -53,6 +58,13 @@ class ChatPipelineRequest(BaseModel):
         return normalize_metadata_filter(value)
 
 
+class QueryRewriteInfo(BaseModel):
+    provider: str = "none"
+    model: str = "none"
+    rewritten: bool = False
+    retrieval_query: str | None = None
+
+
 class RetrievalInfo(BaseModel):
     mode: str
     vector_top_k: int
@@ -61,6 +73,7 @@ class RetrievalInfo(BaseModel):
     used_count: int
     top_score: float | None
     metadata_filter: dict[str, object] = Field(default_factory=dict)
+    query_rewrite: QueryRewriteInfo = Field(default_factory=QueryRewriteInfo)
 
 
 class UsageInfo(BaseModel):
@@ -103,6 +116,7 @@ class RagPipeline:
         session: AsyncSession,
         settings: Settings | None = None,
         embedding_client: EmbeddingClient | None = None,
+        query_rewriter: QueryRewriter | None = None,
         reranker: Reranker | None = None,
         generator: Generator | None = None,
     ) -> None:
@@ -111,6 +125,7 @@ class RagPipeline:
         self.embedding_client = embedding_client or build_embedding_client(
             self.settings
         )
+        self.query_rewriter = query_rewriter or build_query_rewriter(self.settings)
         self.reranker = reranker or build_reranker(self.settings)
         self.generator = generator or build_generator(self.settings)
 
@@ -148,14 +163,29 @@ class RagPipeline:
             )
 
         with trace_span(
+            "rag.query_rewrite",
+            {
+                "provider": self.query_rewriter.provider_name,
+                "model": self.query_rewriter.model_name,
+                "metadata_filter_keys": sorted(metadata_filter),
+            },
+        ):
+            query_rewrite = await self.query_rewriter.rewrite(
+                question=request.question,
+                metadata_filter=metadata_filter,
+            )
+            retrieval_query = query_rewrite.rewritten_query
+
+        with trace_span(
             "rag.embedding",
             {
                 "provider": self.embedding_client.provider_name,
                 "model": self.embedding_client.model_name,
+                "query_rewritten": query_rewrite.rewritten,
             },
         ):
             embedding_started_at = time.perf_counter()
-            query_embedding = await self.embedding_client.embed_query(request.question)
+            query_embedding = await self.embedding_client.embed_query(retrieval_query)
             embedding_latency_ms = max(
                 0,
                 int((time.perf_counter() - embedding_started_at) * 1000),
@@ -183,7 +213,7 @@ class RagPipeline:
             },
         ):
             sparse_results = await SparseRetriever(self.session).retrieve(
-                query=request.question,
+                query=retrieval_query,
                 top_k=sparse_top_k,
                 workspace_id=request.workspace_id,
                 metadata_filter=metadata_filter,
@@ -222,6 +252,7 @@ class RagPipeline:
                 fused_count=len(fused_results),
                 top_score=refusal.top_score,
                 metadata_filter=metadata_filter,
+                query_rewrite=query_rewrite,
                 model=self.generator.model_name,
                 generator_provider=self.generator.provider_name,
                 embedding_model=self.embedding_client.model_name,
@@ -242,7 +273,7 @@ class RagPipeline:
         ):
             used_chunks = (
                 await self.reranker.rerank(
-                    query=request.question,
+                    query=retrieval_query,
                     chunks=fused_results,
                     top_n=rerank_top_n,
                 )
@@ -282,6 +313,7 @@ class RagPipeline:
                 used_count=len(used_chunks),
                 top_score=fused_results[0].score if fused_results else None,
                 metadata_filter=metadata_filter,
+                query_rewrite=query_rewrite,
             ),
             usage=build_usage_info(
                 model=generated.model,
@@ -336,14 +368,29 @@ class RagPipeline:
             return
 
         with trace_span(
+            "rag.query_rewrite",
+            {
+                "provider": self.query_rewriter.provider_name,
+                "model": self.query_rewriter.model_name,
+                "metadata_filter_keys": sorted(metadata_filter),
+            },
+        ):
+            query_rewrite = await self.query_rewriter.rewrite(
+                question=request.question,
+                metadata_filter=metadata_filter,
+            )
+            retrieval_query = query_rewrite.rewritten_query
+
+        with trace_span(
             "rag.embedding",
             {
                 "provider": self.embedding_client.provider_name,
                 "model": self.embedding_client.model_name,
+                "query_rewritten": query_rewrite.rewritten,
             },
         ):
             embedding_started_at = time.perf_counter()
-            query_embedding = await self.embedding_client.embed_query(request.question)
+            query_embedding = await self.embedding_client.embed_query(retrieval_query)
             embedding_latency_ms = max(
                 0,
                 int((time.perf_counter() - embedding_started_at) * 1000),
@@ -371,7 +418,7 @@ class RagPipeline:
             },
         ):
             sparse_results = await SparseRetriever(self.session).retrieve(
-                query=request.question,
+                query=retrieval_query,
                 top_k=sparse_top_k,
                 workspace_id=request.workspace_id,
                 metadata_filter=metadata_filter,
@@ -410,6 +457,7 @@ class RagPipeline:
                 fused_count=len(fused_results),
                 top_score=refusal.top_score,
                 metadata_filter=metadata_filter,
+                query_rewrite=query_rewrite,
                 model=self.generator.model_name,
                 generator_provider=self.generator.provider_name,
                 embedding_model=self.embedding_client.model_name,
@@ -433,7 +481,7 @@ class RagPipeline:
         ):
             used_chunks = (
                 await self.reranker.rerank(
-                    query=request.question,
+                    query=retrieval_query,
                     chunks=fused_results,
                     top_n=rerank_top_n,
                 )
@@ -494,6 +542,7 @@ class RagPipeline:
                 used_count=len(used_chunks),
                 top_score=fused_results[0].score if fused_results else None,
                 metadata_filter=metadata_filter,
+                query_rewrite=query_rewrite,
             ),
             usage=build_usage_info(
                 model=generated_model,
@@ -522,6 +571,7 @@ def build_retrieval_info(
     used_count: int,
     top_score: float | None,
     metadata_filter: dict[str, object] | None = None,
+    query_rewrite: QueryRewriteResult | None = None,
 ) -> RetrievalInfo:
     return RetrievalInfo(
         mode=mode,
@@ -531,6 +581,20 @@ def build_retrieval_info(
         used_count=used_count,
         top_score=top_score,
         metadata_filter=dict(metadata_filter or {}),
+        query_rewrite=build_query_rewrite_info(query_rewrite),
+    )
+
+
+def build_query_rewrite_info(
+    query_rewrite: QueryRewriteResult | None,
+) -> QueryRewriteInfo:
+    if query_rewrite is None:
+        return QueryRewriteInfo()
+    return QueryRewriteInfo(
+        provider=query_rewrite.provider_name,
+        model=query_rewrite.model_name,
+        rewritten=query_rewrite.rewritten,
+        retrieval_query=query_rewrite.rewritten_query,
     )
 
 
@@ -543,6 +607,7 @@ def build_refusal_response(
     fused_count: int,
     top_score: float | None,
     metadata_filter: dict[str, object] | None = None,
+    query_rewrite: QueryRewriteResult | None = None,
     model: str,
     embedding_model: str,
     generator_provider: str = "unknown",
@@ -562,6 +627,7 @@ def build_refusal_response(
             used_count=0,
             top_score=top_score,
             metadata_filter=metadata_filter,
+            query_rewrite=query_rewrite,
         ),
         usage=build_usage_info(
             model=model,

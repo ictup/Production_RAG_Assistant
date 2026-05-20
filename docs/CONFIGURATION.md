@@ -60,10 +60,12 @@ switch the relevant providers and set `OPENAI_API_KEY`:
 ```text
 EMBEDDING_PROVIDER=openai
 GENERATOR_PROVIDER=openai
+QUERY_REWRITER_PROVIDER=openai
 RERANKER_PROVIDER=openai
 OPENAI_API_KEY=<set in local .env or secret manager>
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 LLM_MODEL=gpt-5.4-nano
+QUERY_REWRITE_MODEL=gpt-5.4-nano
 RERANKER_MODEL=gpt-5.4-nano
 ```
 
@@ -72,6 +74,9 @@ chunk embeddings so query vectors and stored vectors use the same model.
 OpenAI reranking uses the Responses API to rank the fused retrieval candidates
 before prompt construction, so it adds one extra OpenAI call per answered chat
 request when enabled.
+OpenAI query rewrite uses the Responses API before embedding and sparse
+retrieval, so it also adds one extra OpenAI call per answered chat request when
+enabled.
 
 ## Secrets Rules
 
@@ -160,6 +165,9 @@ request when enabled.
 
 | Variable | Default | Required | Description |
 | --- | --- | --- | --- |
+| `QUERY_REWRITER_PROVIDER` | `none` | Yes | Query rewrite provider. Supported values: `none`, `openai`. |
+| `QUERY_REWRITE_MODEL` | `gpt-5.4-nano` | Yes for OpenAI query rewrite | Model used to rewrite the user question into a concise retrieval query. |
+| `QUERY_REWRITE_MAX_OUTPUT_TOKENS` | `64` | No | Maximum output tokens for OpenAI query rewrite responses. |
 | `RERANKER_PROVIDER` | `none` | Yes | Reranker provider. Supported values: `none`, `openai`. |
 | `RERANKER_MODEL` | `gpt-5.4-nano` | Yes for OpenAI reranking | Model used by the OpenAI listwise reranker. |
 | `RERANK_TOP_N` | `5` | No | Number of fused chunks retained after reranking. |
