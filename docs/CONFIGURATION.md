@@ -126,6 +126,7 @@ contextualized before retrieval.
 | `EXPORT_STORAGE_DIR` | `exports` | No | Directory where export worker output files are written. Relative paths resolve from the process working directory. Use a mounted persistent volume in production-style deployments. |
 | `EXPORT_WORKER_POLL_INTERVAL_SECONDS` | `5` | No | Poll interval for `python -m backend.app.exporting.worker --loop` when no pending export job is available or an iteration-level error occurs. |
 | `EXPORT_JOB_RUNNING_TIMEOUT_SECONDS` | `3600` | No | Maximum time an export job can remain `running` before a worker treats it as stale and resets it to `pending` for reprocessing. |
+| `EXPORT_FILE_RETENTION_SECONDS` | `604800` | No | Retention window for completed export files in `EXPORT_STORAGE_DIR`. The worker deletes expired top-level `.jsonl` and `.csv` files before claiming the next job. Job metadata remains for audit. |
 
 ### Embeddings
 

@@ -136,6 +136,10 @@ docker compose -f docker-compose.prod.yml logs -f export-worker
 If a worker process exits after marking a job `running` but before completing
 it, the next worker iteration resets the job to `pending` after
 `EXPORT_JOB_RUNNING_TIMEOUT_SECONDS`. The default timeout is `3600` seconds.
+The worker also deletes expired top-level `.jsonl` and `.csv` files from
+`EXPORT_STORAGE_DIR` after `EXPORT_FILE_RETENTION_SECONDS`. The default
+retention is `604800` seconds. Export job metadata remains available for audit;
+downloads for removed files return `404 export file not found`.
 
 View migration logs:
 

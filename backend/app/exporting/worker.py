@@ -4,6 +4,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ EXPORT_MEDIA_TYPES = {
     "csv": "text/csv; charset=utf-8",
     "jsonl": "application/x-ndjson; charset=utf-8",
 }
+EXPORT_CLEANUP_SUFFIXES = frozenset({".csv", ".jsonl"})
 LOGGER = logging.getLogger(__name__)
 RunWorkerIteration = Callable[[Settings], Awaitable["ExportJobExecutionResult | None"]]
 SleepCallable = Callable[[float], Awaitable[Any]]
@@ -30,6 +32,13 @@ SleepCallable = Callable[[float], Awaitable[Any]]
 class ExportJobExecutionResult:
     job: ExportJob
     result_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class ExportCleanupResult:
+    files_deleted: int = 0
+    errors: int = 0
+    deleted_paths: tuple[Path, ...] = ()
 
 
 @dataclass
@@ -47,6 +56,18 @@ async def execute_next_export_job(
     chat_log_repository: ChatLogRepository,
     settings: Settings,
 ) -> ExportJobExecutionResult | None:
+    cleanup_result = cleanup_expired_export_files(
+        storage_dir=Path(settings.export_storage_dir),
+        retention_seconds=settings.export_file_retention_seconds,
+    )
+    if cleanup_result.files_deleted:
+        LOGGER.info("deleted %s expired export file(s)", cleanup_result.files_deleted)
+    if cleanup_result.errors:
+        LOGGER.warning(
+            "failed to delete %s expired export file(s)",
+            cleanup_result.errors,
+        )
+
     reset_count = await export_job_repository.reset_stale_running_export_jobs(
         timeout_seconds=settings.export_job_running_timeout_seconds,
         commit=True,
@@ -151,6 +172,42 @@ def build_export_job_filename(export_job: ExportJob) -> str:
 def safe_filename_part(value: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", value.strip())
     return normalized.strip(".-") or "export"
+
+
+def cleanup_expired_export_files(
+    *,
+    storage_dir: Path,
+    retention_seconds: float,
+) -> ExportCleanupResult:
+    if retention_seconds <= 0:
+        raise ValueError("retention_seconds must be greater than zero")
+
+    storage_root = storage_dir.resolve()
+    if not storage_root.exists():
+        return ExportCleanupResult()
+    if not storage_root.is_dir():
+        raise ValueError("storage_dir must be a directory")
+
+    cutoff_timestamp = datetime.now(UTC).timestamp() - retention_seconds
+    deleted_paths: list[Path] = []
+    errors = 0
+    for entry in storage_root.iterdir():
+        if entry.suffix not in EXPORT_CLEANUP_SUFFIXES or not entry.is_file():
+            continue
+        try:
+            if entry.stat().st_mtime > cutoff_timestamp:
+                continue
+            entry.unlink()
+            deleted_paths.append(entry)
+        except OSError:
+            errors += 1
+            LOGGER.exception("failed to delete expired export file %s", entry)
+
+    return ExportCleanupResult(
+        files_deleted=len(deleted_paths),
+        errors=errors,
+        deleted_paths=tuple(deleted_paths),
+    )
 
 
 async def run_export_worker_once(settings: Settings | None = None) -> str:

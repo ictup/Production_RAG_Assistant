@@ -320,6 +320,10 @@ docker compose -f docker-compose.prod.yml logs -f export-worker
 Each worker iteration first resets stale `running` jobs back to `pending` when
 their `started_at` age exceeds `EXPORT_JOB_RUNNING_TIMEOUT_SECONDS`. This lets a
 new worker process recover jobs left behind by a crashed or interrupted worker.
+The worker also deletes expired top-level `.jsonl` and `.csv` files from
+`EXPORT_STORAGE_DIR` after `EXPORT_FILE_RETENTION_SECONDS`; job metadata remains
+available for audit, and old downloads return `404 export file not found` after
+the file is removed.
 
 Download a completed job:
 

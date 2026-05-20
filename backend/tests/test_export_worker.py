@@ -1,6 +1,7 @@
 import json
+import os
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from backend.app.db.models import ChatLog, ExportJob
 from backend.app.exporting.worker import (
     ExportJobExecutionResult,
     build_export_job_filename,
+    cleanup_expired_export_files,
     execute_next_export_job,
     media_type_for_format,
     run_export_worker_loop,
@@ -326,6 +328,32 @@ async def test_execute_next_export_job_uses_configured_running_timeout(
     ]
 
 
+@pytest.mark.asyncio
+async def test_execute_next_export_job_cleans_expired_export_files(
+    tmp_path: Path,
+) -> None:
+    expired_export = tmp_path / "chat-logs-tenant-a-old.jsonl"
+    expired_export.write_text("old\n", encoding="utf-8")
+    old_timestamp = (datetime.now(UTC) - timedelta(seconds=120)).timestamp()
+    os.utime(expired_export, (old_timestamp, old_timestamp))
+
+    export_job_repository = FakeExportJobRepository(None)
+    chat_log_repository = FakeChatLogRepository([])
+
+    result = await execute_next_export_job(
+        export_job_repository=export_job_repository,  # type: ignore[arg-type]
+        chat_log_repository=chat_log_repository,  # type: ignore[arg-type]
+        settings=Settings(
+            export_storage_dir=str(tmp_path),
+            export_file_retention_seconds=60,
+        ),
+    )
+
+    assert result is None
+    assert not expired_export.exists()
+    assert export_job_repository.claim_calls == [True]
+
+
 def test_export_filename_parts_are_sanitized() -> None:
     export_job = make_export_job_model()
     export_job.workspace_id = "../Tenant A"
@@ -340,6 +368,63 @@ def test_export_filename_parts_are_sanitized() -> None:
 def test_media_type_for_format_rejects_unknown_format() -> None:
     with pytest.raises(ValueError, match="unsupported export format"):
         media_type_for_format("xml")
+
+
+def test_cleanup_expired_export_files_deletes_only_expired_export_files(
+    tmp_path: Path,
+) -> None:
+    expired_jsonl = tmp_path / "old.jsonl"
+    expired_csv = tmp_path / "old.csv"
+    fresh_jsonl = tmp_path / "fresh.jsonl"
+    ignored_text = tmp_path / "old.txt"
+    nested_dir = tmp_path / "nested.csv"
+    nested_dir.mkdir()
+
+    for path in (expired_jsonl, expired_csv, fresh_jsonl, ignored_text):
+        path.write_text("payload", encoding="utf-8")
+
+    old_timestamp = (datetime.now(UTC) - timedelta(seconds=120)).timestamp()
+    fresh_timestamp = datetime.now(UTC).timestamp()
+    for path in (expired_jsonl, expired_csv, ignored_text):
+        os.utime(path, (old_timestamp, old_timestamp))
+    os.utime(fresh_jsonl, (fresh_timestamp, fresh_timestamp))
+
+    result = cleanup_expired_export_files(
+        storage_dir=tmp_path,
+        retention_seconds=60,
+    )
+
+    assert result.files_deleted == 2
+    assert result.errors == 0
+    assert {path.name for path in result.deleted_paths} == {"old.csv", "old.jsonl"}
+    assert not expired_jsonl.exists()
+    assert not expired_csv.exists()
+    assert fresh_jsonl.exists()
+    assert ignored_text.exists()
+    assert nested_dir.is_dir()
+
+
+def test_cleanup_expired_export_files_ignores_missing_storage_dir(
+    tmp_path: Path,
+) -> None:
+    result = cleanup_expired_export_files(
+        storage_dir=tmp_path / "missing",
+        retention_seconds=60,
+    )
+
+    assert result.files_deleted == 0
+    assert result.errors == 0
+    assert result.deleted_paths == ()
+
+
+def test_cleanup_expired_export_files_rejects_invalid_inputs(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="retention_seconds"):
+        cleanup_expired_export_files(storage_dir=tmp_path, retention_seconds=0)
+
+    storage_file = tmp_path / "exports"
+    storage_file.write_text("not a directory", encoding="utf-8")
+    with pytest.raises(ValueError, match="storage_dir"):
+        cleanup_expired_export_files(storage_dir=storage_file, retention_seconds=60)
 
 
 @pytest.mark.asyncio
