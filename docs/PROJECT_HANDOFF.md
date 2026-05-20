@@ -90,7 +90,7 @@ docs/EVAL_TRENDS.md
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency/cost 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
-- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、只读 admin overview、chat log audit filters、chat log audit export 和 chat log audit details
+- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、只读 admin overview、chat log audit filters、chat log audit export 和 chat log audit details
 
 ### 数据库与迁移
 
@@ -510,6 +510,7 @@ http://127.0.0.1:8000/app/
 - 粘贴或选择 Markdown 文件并调用 `POST /documents`
 - 刷新文档列表
 - 调用 `POST /documents/reindex` 执行 dry-run 或写入式 reindex
+- 调用 `POST /workspaces` 创建 workspace，并在成功后切换当前 workspace
 - 查看可访问 workspace 列表和当前 workspace 最近 chat logs
 - 按 request id、session id、refusal only、citation valid/invalid 过滤当前 workspace 的 chat logs，并用 Previous/Next 做基础翻页
 - 按当前 chat log 过滤条件导出 JSONL 或 CSV
@@ -1174,10 +1175,11 @@ Completed: 2026-05-20T09:51:56Z
 - 文档 UI 已支持 Markdown 上传、文档列表、reindex dry-run 和 write。
 - 聊天错误恢复体验已完成基础版：provider/HTTP 错误会在 assistant 消息内展示分类、request id、retryable 状态和 Retry 按钮。
 - 管理后台基础版已完成：右侧 Admin overview 可刷新可访问 workspace 列表和当前 workspace 最近 chat logs，并可从 workspace 列表切换当前 workspace。
+- workspace 管理操作基础版已完成：Admin overview 可调用 `POST /workspaces` 创建 workspace，成功后自动切换当前 workspace 并刷新会话、文档和管理概览。
 - chat log 审计过滤基础版已完成：`GET /chat/logs` 支持 `offset`、`session_id`、`request_id`、`refusal_only`、`citation_valid`，Admin overview 支持对应筛选和 Previous/Next 翻页。
 - chat log 审计导出基础版已完成：`GET /chat/logs/export` 支持同一组过滤参数，可导出 JSONL 或 CSV，Admin overview 可按当前过滤条件触发下载。
 - chat log 审计详情基础版已完成：每条最近日志可展开查看 session、request、citation、sources、refusal、retrieval、query rewrite、metadata filter、usage 和 cost。
-- 完整管理后台仍未完成：还缺少用户/角色/组织管理、workspace 编辑/删除、导出任务异步化/大文件存储、批量运维操作和权限分层 UI。
+- 完整管理后台仍未完成：还缺少用户/角色/组织管理、workspace 编辑/删除/归档、导出任务异步化/大文件存储、批量运维操作和权限分层 UI。
 
 ### 生产部署
 

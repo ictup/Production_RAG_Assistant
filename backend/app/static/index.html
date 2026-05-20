@@ -217,6 +217,39 @@
 
           <section class="admin-section" aria-label="Workspaces">
             <h3>Workspaces</h3>
+            <form id="admin-workspace-form" class="admin-create-form">
+              <label>
+                Workspace ID
+                <input
+                  id="admin-workspace-id"
+                  name="admin-workspace-id"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="tenant-a"
+                  required
+                />
+              </label>
+              <label>
+                Name
+                <input
+                  id="admin-workspace-name"
+                  name="admin-workspace-name"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Optional name"
+                />
+              </label>
+              <label>
+                Description
+                <textarea
+                  id="admin-workspace-description"
+                  name="admin-workspace-description"
+                  rows="3"
+                  placeholder="Optional description"
+                ></textarea>
+              </label>
+              <button id="create-admin-workspace" type="submit">Create</button>
+            </form>
             <div
               id="admin-workspace-list"
               class="admin-list"

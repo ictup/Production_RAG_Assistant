@@ -26,8 +26,8 @@ real provider key is available.
   latency metrics, token metrics, and cost estimates.
 - Deterministic eval gate with JSONL datasets and trend recording.
 - Minimal web UI at `/app/` with sessions, history, SSE chat, document upload,
-  reindex actions, admin overview, audit filters, audit export, audit details,
-  and chat error recovery.
+  reindex actions, workspace creation, admin overview, audit filters, audit
+  export, audit details, and chat error recovery.
 - Dockerfile, production-style Compose stack, deployment runbook, and CI
   workflow.
 

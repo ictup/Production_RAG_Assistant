@@ -497,6 +497,22 @@ textarea:focus {
   padding: 10px;
 }
 
+.admin-create-form {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 10px;
+}
+
+.admin-create-form button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 750;
+}
+
 .admin-filter-grid {
   display: grid;
   gap: 10px;

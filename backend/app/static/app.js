@@ -47,6 +47,11 @@ const els = {
   adminStatus: document.querySelector("#admin-status"),
   adminWorkspaceCount: document.querySelector("#admin-workspace-count"),
   adminLogCount: document.querySelector("#admin-log-count"),
+  adminWorkspaceForm: document.querySelector("#admin-workspace-form"),
+  adminWorkspaceId: document.querySelector("#admin-workspace-id"),
+  adminWorkspaceName: document.querySelector("#admin-workspace-name"),
+  adminWorkspaceDescription: document.querySelector("#admin-workspace-description"),
+  createAdminWorkspace: document.querySelector("#create-admin-workspace"),
   adminFilterForm: document.querySelector("#admin-filter-form"),
   adminRequestId: document.querySelector("#admin-request-id"),
   adminSessionId: document.querySelector("#admin-session-id"),
@@ -127,6 +132,11 @@ function bindEvents() {
 
   els.reloadAdmin.addEventListener("click", () => {
     void loadAdminOverview();
+  });
+
+  els.adminWorkspaceForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void createWorkspaceFromAdmin();
   });
 
   els.adminFilterForm.addEventListener("submit", (event) => {
@@ -252,6 +262,51 @@ async function loadAdminOverview() {
   }
 }
 
+async function createWorkspaceFromAdmin() {
+  const workspaceId = els.adminWorkspaceId.value.trim();
+  if (!workspaceId) {
+    setAdminError("workspace id is required");
+    return;
+  }
+
+  els.createAdminWorkspace.disabled = true;
+  setAdminStatus("Creating workspace");
+  try {
+    const response = await apiFetch("/workspaces", {
+      method: "POST",
+      body: JSON.stringify({
+        id: workspaceId,
+        name: optionalText(els.adminWorkspaceName.value),
+        description: optionalText(els.adminWorkspaceDescription.value),
+        metadata: {
+          created_by: "web_ui",
+        },
+      }),
+    });
+    const body = await response.json();
+    const workspace = body.workspace;
+    const changed = workspace.id !== state.workspaceId;
+    state.workspaceId = workspace.id;
+    els.workspaceId.value = state.workspaceId;
+    localStorage.setItem("rag.workspaceId", state.workspaceId);
+    state.admin.logOffset = 0;
+    if (changed) {
+      clearSelectedSession();
+    }
+    els.adminWorkspaceForm.reset();
+    await Promise.all([loadSessions(), loadDocuments(), loadAdminOverview()]);
+    setAdminStatus(
+      body.created
+        ? `Created workspace ${workspace.id}`
+        : `Workspace ready ${workspace.id}`,
+    );
+  } catch (error) {
+    setAdminError(error.message);
+  } finally {
+    els.createAdminWorkspace.disabled = false;
+  }
+}
+
 function buildChatLogsUrl() {
   const params = buildChatLogParams({
     limit: state.admin.logLimit,
@@ -310,6 +365,11 @@ function clearAdminFilters() {
   els.adminSessionId.value = "";
   els.adminCitationValid.value = "";
   els.adminRefusalOnly.checked = false;
+}
+
+function optionalText(value) {
+  const text = String(value || "").trim();
+  return text || null;
 }
 
 async function exportAdminLogs(format) {
