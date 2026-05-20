@@ -1,4 +1,4 @@
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
@@ -8,11 +8,14 @@ from backend.app.db.repositories import (
     ArchiveWorkspaceInput,
     CreateWorkspaceInput,
     UpdateWorkspaceInput,
+    WorkspaceListResult,
     WorkspaceRepository,
 )
 from backend.app.schemas.workspaces import (
     ArchiveWorkspaceRequest,
+    BulkArchiveMatchingWorkspacesRequest,
     BulkArchiveWorkspacesRequest,
+    BulkRestoreMatchingWorkspacesRequest,
     BulkRestoreWorkspacesRequest,
     BulkWorkspaceOperationResponse,
     BulkWorkspacePreviewResponse,
@@ -21,11 +24,10 @@ from backend.app.schemas.workspaces import (
     UpdateWorkspaceRequest,
     WorkspaceResponse,
     WorkspacesResponse,
+    WorkspaceStatus,
 )
 
 router = APIRouter(tags=["workspaces"])
-
-WorkspaceStatusFilter = Literal["all", "active", "archived"]
 
 
 @router.post(
@@ -62,7 +64,7 @@ async def list_workspaces(
     offset: Annotated[int, Query(ge=0)] = 0,
     q: Annotated[str | None, Query(max_length=256)] = None,
     workspace_status: Annotated[
-        WorkspaceStatusFilter,
+        WorkspaceStatus,
         Query(alias="status"),
     ] = "all",
 ) -> WorkspacesResponse:
@@ -81,7 +83,7 @@ async def list_workspaces(
 
 
 def workspace_status_to_archived_filter(
-    workspace_status: WorkspaceStatusFilter,
+    workspace_status: WorkspaceStatus,
 ) -> bool | None:
     if workspace_status == "active":
         return False
@@ -99,7 +101,7 @@ async def preview_bulk_workspaces(
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
     q: Annotated[str | None, Query(max_length=256)] = None,
     workspace_status: Annotated[
-        WorkspaceStatusFilter,
+        WorkspaceStatus,
         Query(alias="status"),
     ] = "all",
     sample_limit: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -117,6 +119,110 @@ async def preview_bulk_workspaces(
         q=q,
         result=result,
     )
+
+
+@router.post(
+    "/workspaces/bulk/archive-matching",
+    response_model=BulkWorkspaceOperationResponse,
+)
+async def archive_matching_workspaces(
+    request: BulkArchiveMatchingWorkspacesRequest,
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
+    repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
+) -> BulkWorkspaceOperationResponse:
+    matching_result = await load_confirmed_matching_workspaces(
+        request=request,
+        principal=principal,
+        repository=repository,
+    )
+    if not matching_result.workspaces:
+        return BulkWorkspaceOperationResponse(
+            action="archive_matching",
+            requested_count=0,
+            updated_count=0,
+            workspaces=[],
+        )
+
+    result = await repository.archive_workspaces(
+        [
+            ArchiveWorkspaceInput(id=workspace.id, reason=request.reason)
+            for workspace in matching_result.workspaces
+        ],
+        commit=True,
+    )
+    raise_for_missing_bulk_workspaces(result.missing_ids)
+    return BulkWorkspaceOperationResponse.from_result(
+        action="archive_matching",
+        requested_count=len(matching_result.workspaces),
+        result=result,
+    )
+
+
+@router.post(
+    "/workspaces/bulk/restore-matching",
+    response_model=BulkWorkspaceOperationResponse,
+)
+async def restore_matching_workspaces(
+    request: BulkRestoreMatchingWorkspacesRequest,
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
+    repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
+) -> BulkWorkspaceOperationResponse:
+    matching_result = await load_confirmed_matching_workspaces(
+        request=request,
+        principal=principal,
+        repository=repository,
+    )
+    if not matching_result.workspaces:
+        return BulkWorkspaceOperationResponse(
+            action="restore_matching",
+            requested_count=0,
+            updated_count=0,
+            workspaces=[],
+        )
+
+    result = await repository.restore_workspaces(
+        workspace_ids=[workspace.id for workspace in matching_result.workspaces],
+        commit=True,
+    )
+    raise_for_missing_bulk_workspaces(result.missing_ids)
+    return BulkWorkspaceOperationResponse.from_result(
+        action="restore_matching",
+        requested_count=len(matching_result.workspaces),
+        result=result,
+    )
+
+
+async def load_confirmed_matching_workspaces(
+    *,
+    request: (
+        BulkArchiveMatchingWorkspacesRequest | BulkRestoreMatchingWorkspacesRequest
+    ),
+    principal: ApiPrincipal,
+    repository: WorkspaceRepository,
+) -> WorkspaceListResult:
+    if not request.confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="bulk matching operation confirmation required",
+        )
+
+    result = await repository.list_workspaces(
+        workspace_ids=principal.allowed_workspaces,
+        limit=max(request.expected_total, 1),
+        offset=0,
+        search=request.q,
+        archived=workspace_status_to_archived_filter(request.status),
+    )
+    if result.total != request.expected_total:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "bulk preview total changed",
+                "expected_total": request.expected_total,
+                "current_total": result.total,
+            },
+        )
+    return result
 
 
 @router.post(

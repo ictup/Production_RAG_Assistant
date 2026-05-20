@@ -401,6 +401,197 @@ def test_preview_bulk_workspaces_route_filters_to_allowed_workspaces() -> None:
     ]
 
 
+def test_archive_matching_workspaces_route_archives_current_query() -> None:
+    fake_repository = FakeWorkspaceRepository(
+        list_result=WorkspaceListResult(
+            total=2,
+            workspaces=[
+                make_workspace_model(workspace_id="tenant-a"),
+                make_workspace_model(workspace_id="tenant-b"),
+            ],
+        )
+    )
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/bulk/archive-matching",
+        headers=AUTH_HEADERS,
+        json={
+            "q": " Tenant ",
+            "status": "active",
+            "expected_total": 2,
+            "confirm": True,
+            "reason": " Cleanup ",
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_repository.list_calls == [(None, 2, 0, "Tenant", False)]
+    workspace_inputs, commit = fake_repository.bulk_archive_calls[0]
+    assert [workspace_input.id for workspace_input in workspace_inputs] == [
+        "tenant-a",
+        "tenant-b",
+    ]
+    assert [workspace_input.reason for workspace_input in workspace_inputs] == [
+        "Cleanup",
+        "Cleanup",
+    ]
+    assert commit is True
+    body = response.json()
+    assert body["action"] == "archive_matching"
+    assert body["requested_count"] == 2
+    assert body["updated_count"] == 2
+
+
+def test_archive_matching_workspaces_route_requires_confirmation() -> None:
+    fake_repository = FakeWorkspaceRepository()
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/bulk/archive-matching",
+        headers=AUTH_HEADERS,
+        json={
+            "status": "active",
+            "expected_total": 1,
+            "confirm": False,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "bulk matching operation confirmation required"
+    }
+    assert fake_repository.list_calls == []
+    assert fake_repository.bulk_archive_calls == []
+
+
+def test_archive_matching_workspaces_route_rejects_changed_total() -> None:
+    fake_repository = FakeWorkspaceRepository(
+        list_result=WorkspaceListResult(
+            total=3,
+            workspaces=[
+                make_workspace_model(workspace_id="tenant-a"),
+                make_workspace_model(workspace_id="tenant-b"),
+            ],
+        )
+    )
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/bulk/archive-matching",
+        headers=AUTH_HEADERS,
+        json={
+            "status": "active",
+            "expected_total": 2,
+            "confirm": True,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": {
+            "message": "bulk preview total changed",
+            "expected_total": 2,
+            "current_total": 3,
+        }
+    }
+    assert fake_repository.list_calls == [(None, 2, 0, None, False)]
+    assert fake_repository.bulk_archive_calls == []
+
+
+def test_archive_matching_workspaces_route_allows_zero_matches() -> None:
+    fake_repository = FakeWorkspaceRepository(
+        list_result=WorkspaceListResult(total=0, workspaces=[])
+    )
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/bulk/archive-matching",
+        headers=AUTH_HEADERS,
+        json={
+            "q": "missing",
+            "status": "active",
+            "expected_total": 0,
+            "confirm": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_repository.list_calls == [(None, 1, 0, "missing", False)]
+    assert fake_repository.bulk_archive_calls == []
+    assert response.json() == {
+        "action": "archive_matching",
+        "requested_count": 0,
+        "updated_count": 0,
+        "workspaces": [],
+    }
+
+
+def test_restore_matching_workspaces_route_restores_current_query() -> None:
+    fake_repository = FakeWorkspaceRepository(
+        list_result=WorkspaceListResult(
+            total=2,
+            workspaces=[
+                make_workspace_model(workspace_id="tenant-a"),
+                make_workspace_model(workspace_id="tenant-b"),
+            ],
+        )
+    )
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/bulk/restore-matching",
+        headers=AUTH_HEADERS,
+        json={
+            "status": "archived",
+            "expected_total": 2,
+            "confirm": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_repository.list_calls == [(None, 2, 0, None, True)]
+    workspace_ids, commit = fake_repository.bulk_restore_calls[0]
+    assert workspace_ids == ["tenant-a", "tenant-b"]
+    assert commit is True
+    body = response.json()
+    assert body["action"] == "restore_matching"
+    assert body["requested_count"] == 2
+    assert body["updated_count"] == 2
+
+
+def test_restore_matching_workspaces_route_filters_to_allowed_workspaces() -> None:
+    fake_repository = FakeWorkspaceRepository(
+        list_result=WorkspaceListResult(
+            total=1,
+            workspaces=[make_workspace_model(workspace_id="tenant-a")],
+        )
+    )
+    client = build_client(
+        fake_repository,
+        settings=Settings(
+            api_keys="tenant-key",
+            api_key_workspace_access="tenant-key=tenant-a",
+        ),
+    )
+
+    response = client.post(
+        "/workspaces/bulk/restore-matching",
+        headers={"Authorization": "Bearer tenant-key"},
+        json={
+            "status": "archived",
+            "expected_total": 1,
+            "confirm": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_repository.list_calls == [
+        (frozenset({"tenant-a"}), 1, 0, None, True)
+    ]
+    assert fake_repository.bulk_restore_calls[0][0] == ["tenant-a"]
+
+
 def test_get_workspace_route_returns_workspace() -> None:
     fake_repository = FakeWorkspaceRepository(detail_workspace=make_workspace_model())
     client = build_client(fake_repository)
@@ -786,6 +977,8 @@ def test_openapi_exposes_workspace_routes() -> None:
     assert "/workspaces/{workspace_id}" in paths
     assert "patch" in paths["/workspaces/{workspace_id}"]
     assert "/workspaces/bulk/preview" in paths
+    assert "/workspaces/bulk/archive-matching" in paths
+    assert "/workspaces/bulk/restore-matching" in paths
     assert "/workspaces/bulk/archive" in paths
     assert "/workspaces/bulk/restore" in paths
     assert "/workspaces/{workspace_id}/archive" in paths

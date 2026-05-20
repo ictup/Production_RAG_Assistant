@@ -241,6 +241,11 @@ Bulk archive and restore workspaces:
 curl.exe "http://127.0.0.1:8000/workspaces/bulk/preview?status=active&q=tenant&sample_limit=20" `
   -H "Authorization: Bearer dev-key"
 
+curl.exe -X POST http://127.0.0.1:8000/workspaces/bulk/archive-matching `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -d "{\"q\":\"tenant\",\"status\":\"active\",\"expected_total\":2,\"confirm\":true,\"reason\":\"temporary cleanup\"}"
+
 curl.exe -X POST http://127.0.0.1:8000/workspaces/bulk/archive `
   -H "Authorization: Bearer dev-key" `
   -H "Content-Type: application/json" `

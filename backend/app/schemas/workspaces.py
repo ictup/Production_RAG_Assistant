@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -11,6 +11,7 @@ from backend.app.db.repositories import (
 )
 
 WorkspaceId = Annotated[str, Field(min_length=1, max_length=128)]
+WorkspaceStatus = Literal["all", "active", "archived"]
 
 
 class CreateWorkspaceRequest(BaseModel):
@@ -87,6 +88,37 @@ class BulkRestoreWorkspacesRequest(BaseModel):
     @classmethod
     def workspace_ids_must_be_unique(cls, values: list[str]) -> list[str]:
         return normalize_workspace_ids(values)
+
+
+class BulkMatchingWorkspacesRequest(BaseModel):
+    q: str | None = Field(default=None, max_length=256)
+    status: WorkspaceStatus = "all"
+    expected_total: int = Field(ge=0, le=1000)
+    confirm: bool = False
+
+    @field_validator("q")
+    @classmethod
+    def optional_query_must_be_trimmed(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class BulkArchiveMatchingWorkspacesRequest(BulkMatchingWorkspacesRequest):
+    reason: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("reason")
+    @classmethod
+    def optional_reason_must_be_trimmed(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class BulkRestoreMatchingWorkspacesRequest(BulkMatchingWorkspacesRequest):
+    pass
 
 
 def normalize_workspace_ids(values: list[str]) -> list[str]:
@@ -204,7 +236,7 @@ class BulkWorkspacePreviewResponse(BaseModel):
     total: int = Field(ge=0)
     sample_count: int = Field(ge=0)
     sample_limit: int = Field(gt=0)
-    status: str
+    status: WorkspaceStatus
     q: str | None
     workspaces: list[WorkspaceItem]
 
@@ -213,7 +245,7 @@ class BulkWorkspacePreviewResponse(BaseModel):
         cls,
         *,
         sample_limit: int,
-        workspace_status: str,
+        workspace_status: WorkspaceStatus,
         q: str | None,
         result: WorkspaceListResult,
     ) -> "BulkWorkspacePreviewResponse":
