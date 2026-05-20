@@ -90,6 +90,9 @@ def test_production_makefile_targets_exist() -> None:
 
     assert "prod-config:" in content
     assert "docker compose -f docker-compose.prod.yml config --quiet" in content
+    assert "config-check:" in content
+    assert "prod-config-check:" in content
+    assert "python -m backend.app.core.config_check --production" in content
     assert "prod-build:" in content
     assert "prod-up:" in content
     assert "prod-down:" in content

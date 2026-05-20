@@ -22,6 +22,18 @@ docker compose -f docker-compose.prod.yml config --quiet
 Do not use plain `docker compose config` when `.env` contains real secrets,
 because it expands environment values into terminal output.
 
+Run the application-level configuration preflight without printing secret
+values:
+
+```powershell
+uv run python -m backend.app.core.config_check
+uv run python -m backend.app.core.config_check --production
+```
+
+The production mode fails on insecure API key defaults and missing OpenAI keys
+for enabled OpenAI providers. It also warns about local database URLs, missing
+workspace scoping, and disabled rate limiting.
+
 ## Runtime Modes
 
 ### Local Development
@@ -97,6 +109,9 @@ contextualized before retrieval.
   acceptable only for local development.
 - Prefer `docker compose -f docker-compose.prod.yml config --quiet` for
   validation so secrets are not printed.
+- Run `uv run python -m backend.app.core.config_check --production` before
+  deployment. The command reports variable names and remediation guidance
+  without printing configured secret values.
 - Before committing, run the repository secret scan command from this guide.
 
 ## Environment Variables
@@ -201,6 +216,7 @@ Run before committing configuration changes:
 
 ```powershell
 uv run pytest backend/tests/test_configuration_docs.py backend/tests/test_config.py
+uv run python -m backend.app.core.config_check
 uv run ruff check .
 docker compose -f docker-compose.prod.yml config --quiet
 rg -n "s[k]-" backend docs .github ingestion evals pyproject.toml README.md Makefile docker-compose.yml docker-compose.prod.yml .env.example Dockerfile .dockerignore

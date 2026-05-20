@@ -267,6 +267,13 @@ monitoring/
 docs/CONFIGURATION.md
 ```
 
+部署前可以运行不会打印 secret 值的配置预检：
+
+```powershell
+uv run python -m backend.app.core.config_check
+uv run python -m backend.app.core.config_check --production
+```
+
 部署启动、验证、日志、停服和恢复步骤见：
 
 ```text
@@ -919,7 +926,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-483 passed
+576 passed
 ```
 
 ### Pipeline Smoke
@@ -1104,6 +1111,8 @@ uv run python -m backend.app.rag.reindex_embeddings --workspace-id public --limi
 make db-up              启动 Postgres/pgvector
 make db-down            停止 Docker Compose 服务
 make db-logs            查看 Postgres 日志
+make config-check       校验当前运行配置，不打印 secret 值
+make prod-config-check  按 production 规则校验配置，不打印 secret 值
 make prod-config        静默校验 production compose 配置
 make prod-build         构建 production API 镜像
 make prod-up            启动 production-style 本地栈
@@ -1329,6 +1338,7 @@ Completed: 2026-05-20T09:51:56Z
 - production docker-compose 已完成：`docker-compose.prod.yml`。
 - production export worker 服务已完成：`export-worker` 使用同一镜像运行 `python -m backend.app.exporting.worker --loop`，并与 API 共享导出文件 volume。
 - 环境变量和 secrets 文档已完成：`docs/CONFIGURATION.md`。
+- 配置预检 CLI 已完成：`python -m backend.app.core.config_check` 和 `--production` 会在不打印 secret 值的情况下检查 OpenAI key、生产 API key、CORS credential 边界、workspace scoping、rate limit 和本地数据库 URL 风险。
 - 部署 runbook 已完成：`docs/DEPLOYMENT_RUNBOOK.md`。
 - CORS 策略已完成：默认关闭，通过 `CORS_ALLOWED_ORIGINS` 或 `CORS_ALLOWED_ORIGIN_REGEX` 显式开启。
 - rate limit 已完成：默认关闭，通过 `RATE_LIMIT_ENABLED` 显式开启。
@@ -1452,19 +1462,20 @@ OPENAI_API_KEY
 36. 导出任务运维补强：过期导出文件清理。已完成。
 37. 导出任务运维补强：失败任务手动重试。已完成。
 38. 真实 OpenAI 端到端验证。已完成。
+39. 生产配置和 secrets 收紧：配置预检 CLI。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-生产配置和 secrets 收紧
+生产部署平台 secrets 接入说明和最终 release 收口
 ```
 
 原因：
 
-- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker、production compose 编排、running 超时恢复、过期文件清理、失败任务手动重试和真实 OpenAI 端到端验证已完成。
-- 下一步可以收紧生产启动前配置校验、secret manager/部署平台说明、`.env.example` 与 runbook 的最终生产说明，减少真实部署时的配置漂移。
+- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker、production compose 编排、running 超时恢复、过期文件清理、失败任务手动重试、真实 OpenAI 端到端验证和配置预检 CLI 已完成。
+- 下一步可以补充具体部署平台 secret manager 映射说明，并做最终 release 收口。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

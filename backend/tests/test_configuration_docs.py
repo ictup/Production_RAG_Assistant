@@ -40,6 +40,7 @@ def test_configuration_doc_warns_against_printing_secrets() -> None:
     documented_config = CONFIGURATION_DOC_PATH.read_text(encoding="utf-8")
 
     assert "config --quiet" in documented_config
+    assert "python -m backend.app.core.config_check --production" in documented_config
     assert "never commit real secrets" in documented_config.lower()
 
 

@@ -13,6 +13,7 @@ The current deployment target is a single-host Docker Compose stack:
 - `postgres`: PostgreSQL with pgvector
 - `migrate`: one-shot Alembic migration job
 - `api`: FastAPI backend and static web UI
+- `export-worker`: long-running asynchronous export worker
 
 For multi-host or multi-replica production, move secrets to a managed secret
 store and replace in-process rate limiting with Redis, an API gateway, or a
@@ -63,6 +64,16 @@ Validate Compose without printing resolved environment values:
 ```powershell
 docker compose -f docker-compose.prod.yml config --quiet
 ```
+
+Run production configuration preflight without printing secret values:
+
+```powershell
+uv run python -m backend.app.core.config_check --production
+```
+
+Fix any reported errors before deployment. Warnings identify configuration
+choices that are acceptable for local production-style testing but should be
+reviewed for shared or real production environments.
 
 ## First Deployment
 
@@ -180,6 +191,7 @@ Validate configuration:
 
 ```powershell
 docker compose -f docker-compose.prod.yml config --quiet
+uv run python -m backend.app.core.config_check --production
 ```
 
 Rebuild and restart:

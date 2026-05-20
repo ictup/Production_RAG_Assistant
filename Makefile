@@ -1,4 +1,4 @@
-.PHONY: db-up db-down db-logs prod-config prod-build prod-up prod-down prod-logs prod-worker-logs migrate ingest ingest-dry-run reindex-embeddings-dry-run reindex-embeddings inspect-ingestion inspect-chat-logs inspect-evals run-evals eval-gate eval-gate-openai eval-trend document-management-smoke embedding-smoke generator-smoke vector-smoke sparse-smoke hybrid-smoke rerank-smoke pipeline-smoke pipeline-smoke-openai
+.PHONY: db-up db-down db-logs config-check prod-config-check prod-config prod-build prod-up prod-down prod-logs prod-worker-logs migrate ingest ingest-dry-run reindex-embeddings-dry-run reindex-embeddings inspect-ingestion inspect-chat-logs inspect-evals run-evals eval-gate eval-gate-openai eval-trend document-management-smoke embedding-smoke generator-smoke vector-smoke sparse-smoke hybrid-smoke rerank-smoke pipeline-smoke pipeline-smoke-openai
 
 db-up:
 	docker compose up -d postgres
@@ -8,6 +8,12 @@ db-down:
 
 db-logs:
 	docker compose logs -f postgres
+
+config-check:
+	uv run python -m backend.app.core.config_check
+
+prod-config-check:
+	uv run python -m backend.app.core.config_check --production
 
 prod-config:
 	docker compose -f docker-compose.prod.yml config --quiet

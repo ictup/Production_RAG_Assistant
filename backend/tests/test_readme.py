@@ -33,9 +33,11 @@ def test_readme_documents_core_commands_and_links() -> None:
 
     required_snippets = [
         "docker compose -f docker-compose.prod.yml config --quiet",
+        "uv run python -m backend.app.core.config_check --production",
         "docker compose -f docker-compose.prod.yml up -d --build",
         "uv run ruff check .",
         "uv run pytest",
+        "uv run python -m backend.app.core.config_check",
         "uv run python -m evals.run --format summary --fail-on-failure --no-output",
         "uv run python -m backend.app.rag.pipeline_smoke",
         "uv run python -m evals.document_management_smoke",

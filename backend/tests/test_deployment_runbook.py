@@ -43,6 +43,7 @@ def test_deployment_runbook_documents_health_logs_and_shutdown() -> None:
     assert "curl.exe http://127.0.0.1:8000/health" in runbook
     assert "docker compose -f docker-compose.prod.yml logs -f api" in runbook
     assert "docker compose -f docker-compose.prod.yml down" in runbook
+    assert "python -m backend.app.core.config_check --production" in runbook
 
 
 def test_deployment_runbook_is_linked_from_entry_documents() -> None:
