@@ -11,7 +11,7 @@ D:\Learning-2026\RAG-2026
 当前 GitHub 仓库：
 
 ```text
-https://github.com/ictup/Production_RAG_Assistant.git
+https://github.com/ictup/production-rag-assistant.git
 ```
 
 当前容器化入口：
@@ -223,7 +223,7 @@ docs/EVAL_TRENDS.md
   - event：`push`
   - branch：`main`
   - commit：`2d39e63e8a6e3dfc3a4afd999456e38602a27930`
-  - run：`https://github.com/ictup/Production_RAG_Assistant/actions/runs/26154936552`
+  - run：`https://github.com/ictup/production-rag-assistant/actions/runs/26154936552`
   - status：`completed`
   - conclusion：`success`
   - created_at：`2026-05-20T09:51:04Z`
@@ -1223,8 +1223,8 @@ flowchart TD
 1. Clone 仓库。
 
 ```powershell
-git clone https://github.com/ictup/Production_RAG_Assistant.git
-cd Production_RAG_Assistant
+git clone https://github.com/ictup/production-rag-assistant.git
+cd production-rag-assistant
 ```
 
 2. 安装依赖。
@@ -1294,7 +1294,7 @@ Repository -> Settings -> Actions -> General
 当前远端 Actions 已验证可运行。最近一次已完成核验的 `main` push CI：
 
 ```text
-Run: https://github.com/ictup/Production_RAG_Assistant/actions/runs/26154936552
+Run: https://github.com/ictup/production-rag-assistant/actions/runs/26154936552
 Commit: 2d39e63e8a6e3dfc3a4afd999456e38602a27930
 Workflow: CI
 Job: Backend checks

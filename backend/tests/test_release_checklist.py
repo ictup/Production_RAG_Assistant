@@ -85,7 +85,7 @@ def test_v010_github_release_body_is_ready_to_publish() -> None:
         "# GitHub Release: v0.1.0",
         "v0.1.0 - Production readiness baseline",
         "d325a2b584b06d0515fa70518efb7a5b7ecd059c",
-        "https://github.com/ictup/Production_RAG_Assistant/actions/runs/26180055626",
+        "https://github.com/ictup/production-rag-assistant/actions/runs/26180055626",
         "API_KEY_ROLES",
         "docs/SECRET_MANAGER_MAPPING.md",
         "gh release create v0.1.0",

@@ -41,8 +41,8 @@ docker compose version
 Clone or update the repository:
 
 ```powershell
-git clone https://github.com/ictup/Production_RAG_Assistant.git
-Set-Location Production_RAG_Assistant
+git clone https://github.com/ictup/production-rag-assistant.git
+Set-Location production-rag-assistant
 ```
 
 Create local configuration:

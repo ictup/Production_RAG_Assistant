@@ -12,9 +12,7 @@ Use this display name:
 Production RAG Assistant
 ```
 
-The current repository name, `Production_RAG_Assistant`, is understandable and
-safe to keep. If the repository is ever renamed, prefer the lowercase GitHub
-style:
+The repository uses the lowercase GitHub style:
 
 ```text
 production-rag-assistant
