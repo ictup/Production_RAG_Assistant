@@ -168,6 +168,19 @@ docs/EVAL_TRENDS.md
 ### CI
 
 - GitHub Actions workflow：`.github/workflows/ci.yml`
+- 远端 GitHub Actions 已确认会在 `main` push 后运行。
+- 最近一次已完成核验：
+  - workflow：`CI`
+  - event：`push`
+  - branch：`main`
+  - commit：`2d39e63e8a6e3dfc3a4afd999456e38602a27930`
+  - run：`https://github.com/ictup/Production_RAG_Assistant/actions/runs/26154936552`
+  - status：`completed`
+  - conclusion：`success`
+  - created_at：`2026-05-20T09:51:04Z`
+  - updated_at：`2026-05-20T09:51:56Z`
+  - job：`Backend checks`
+  - job conclusion：`success`
 - CI 步骤包括：
   - `uv sync --frozen`
   - `uv run ruff check .`
@@ -800,7 +813,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-438 passed
+439 passed
 ```
 
 ### Pipeline Smoke
@@ -1085,6 +1098,19 @@ Repository -> Settings -> Actions -> General
 
 确认 Actions 已启用。
 
+当前远端 Actions 已验证可运行。最近一次已完成核验的 `main` push CI：
+
+```text
+Run: https://github.com/ictup/Production_RAG_Assistant/actions/runs/26154936552
+Commit: 2d39e63e8a6e3dfc3a4afd999456e38602a27930
+Workflow: CI
+Job: Backend checks
+Status: completed
+Conclusion: success
+Created: 2026-05-20T09:51:04Z
+Completed: 2026-05-20T09:51:56Z
+```
+
 ## 12. 当前还没有实现的功能
 
 ### 模型与 provider
@@ -1161,7 +1187,7 @@ Repository -> Settings -> Actions -> General
 
 1. 扩展 README，让它成为项目主页。已完成。
 2. 增加 `.env.example` 中真实 provider 的占位配置。
-3. 确认 GitHub Actions 在远端实际运行。
+3. 确认 GitHub Actions 在远端实际运行。已完成。
 
 ### 阶段 B：接入真实模型
 
@@ -1241,7 +1267,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-GitHub Actions status check
+.env.example real provider placeholders
 ```
 
 原因：
@@ -1253,7 +1279,7 @@ GitHub Actions status check
 - OpenAI generator 已可纳入 eval runner。
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
-- README 项目主页已完成，下一步可以确认 GitHub Actions 在远端实际运行状态，并把失败日志或通过状态纳入交接记录。
+- GitHub Actions 远端运行状态已确认，下一步可以补 `.env.example` 中真实 provider 的占位配置，让本地 fake 模式和真实 OpenAI 模式的切换路径更清楚。
 
 启用 OpenAI embedding 后可以先跑：
 

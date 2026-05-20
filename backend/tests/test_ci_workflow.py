@@ -3,6 +3,7 @@ from pathlib import Path
 import yaml
 
 WORKFLOW_PATH = Path(".github/workflows/ci.yml")
+HANDOFF_PATH = Path("docs/PROJECT_HANDOFF.md")
 
 
 def load_ci_workflow() -> dict:
@@ -46,3 +47,12 @@ def test_ci_workflow_uploads_eval_report() -> None:
     assert upload_step["if"] == "always()"
     assert upload_step["uses"] == "actions/upload-artifact@v4"
     assert upload_step["with"]["path"] == "evals/reports/ci.json"
+
+
+def test_handoff_records_remote_ci_status() -> None:
+    handoff = HANDOFF_PATH.read_text(encoding="utf-8")
+
+    assert "远端 GitHub Actions 已确认" in handoff
+    assert "actions/runs/26154936552" in handoff
+    assert "Conclusion: success" in handoff
+    assert "Job: Backend checks" in handoff
