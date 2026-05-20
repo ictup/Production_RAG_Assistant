@@ -107,13 +107,14 @@ async function apiFetch(path, options = {}) {
 
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
+    let body = null;
     try {
-      const body = await response.json();
+      body = await response.json();
       detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body);
     } catch {
       detail = await response.text();
     }
-    throw new Error(detail);
+    throw buildHttpError(response, body, detail);
   }
 
   return response;
@@ -358,15 +359,17 @@ async function loadHistory(sessionId) {
   }
 }
 
-async function submitQuestion() {
-  const question = els.question.value.trim();
+async function submitQuestion(retryQuestion = "") {
+  const question = (retryQuestion || els.question.value).trim();
   if (!question || state.sending) {
     return;
   }
 
   state.sending = true;
   els.send.disabled = true;
-  els.question.value = "";
+  if (!retryQuestion) {
+    els.question.value = "";
+  }
   appendMessage("user", question);
   const assistantMessage = appendMessage("assistant", "");
 
@@ -375,15 +378,18 @@ async function submitQuestion() {
       const title = question.length > 80 ? `${question.slice(0, 77)}...` : question;
       const session = await createSession(title);
       if (!session) {
-        return;
+        throw createAppError("Could not create chat session", {
+          retryable: true,
+        });
       }
     }
 
     await streamAnswer(question, assistantMessage);
     setStatus("Ready");
   } catch (error) {
-    setError(error.message);
-    updateMessageContent(assistantMessage, `Request failed: ${error.message}`);
+    const appError = normalizeError(error);
+    setError(formatStatusError(appError));
+    renderMessageError(assistantMessage, appError, question);
   } finally {
     state.sending = false;
     els.send.disabled = false;
@@ -400,6 +406,11 @@ async function streamAnswer(question, assistantMessage) {
       session_id: state.sessionId || null,
     }),
   });
+  if (!response.body) {
+    throw createAppError("The browser did not receive a streaming response.", {
+      retryable: true,
+    });
+  }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -428,7 +439,7 @@ async function streamAnswer(question, assistantMessage) {
         renderSources(assistantMessage, event.data.sources || []);
       }
       if (event.name === "error") {
-        throw new Error(event.data.message || "stream failed");
+        throw buildStreamError(event.data);
       }
     }
   }
@@ -482,6 +493,55 @@ function updateMessageContent(message, text) {
   els.messages.scrollTop = els.messages.scrollHeight;
 }
 
+function renderMessageError(message, error, question) {
+  updateMessageContent(message, error.userMessage || error.message);
+  const existing = message.querySelector(".message-error");
+  if (existing) {
+    existing.remove();
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "message-error";
+
+  const title = document.createElement("div");
+  title.className = "error-title";
+  title.textContent = "Request failed";
+
+  const detail = document.createElement("div");
+  detail.className = "error-detail";
+  detail.textContent = error.message || "The request could not be completed.";
+
+  const metaItems = buildErrorMetaItems(error);
+  wrapper.append(title, detail);
+  if (metaItems.length) {
+    const meta = document.createElement("div");
+    meta.className = "error-meta";
+    for (const item of metaItems) {
+      const row = document.createElement("div");
+      row.textContent = item;
+      meta.append(row);
+    }
+    wrapper.append(meta);
+  }
+
+  if (question) {
+    const actions = document.createElement("div");
+    actions.className = "message-actions";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "retry-button";
+    retry.textContent = "Retry";
+    retry.addEventListener("click", () => {
+      void submitQuestion(question);
+    });
+    actions.append(retry);
+    wrapper.append(actions);
+  }
+
+  message.append(wrapper);
+  els.messages.scrollTop = els.messages.scrollHeight;
+}
+
 function renderSources(message, sources) {
   const existing = message.querySelector(".sources");
   if (existing) {
@@ -511,6 +571,110 @@ function renderSources(message, sources) {
     wrapper.append(item);
   }
   message.append(wrapper);
+}
+
+function buildHttpError(response, body, fallbackMessage) {
+  const detail = body && typeof body === "object" ? body.detail : null;
+  if (detail && typeof detail === "object") {
+    return createAppError(detail.message || fallbackMessage, {
+      status: response.status,
+      provider: detail.provider,
+      category: detail.category,
+      retryable: detail.retryable,
+      requestId: detail.request_id,
+      userMessage: providerErrorUserMessage(detail.category),
+    });
+  }
+
+  return createAppError(fallbackMessage, {
+    status: response.status,
+    retryable: response.status >= 500 || response.status === 429,
+    userMessage: httpErrorUserMessage(response.status, fallbackMessage),
+  });
+}
+
+function buildStreamError(data) {
+  return createAppError(data.message || "The stream failed before completion.", {
+    provider: data.provider,
+    category: data.category,
+    retryable: data.retryable,
+    requestId: data.request_id,
+    userMessage: providerErrorUserMessage(data.category),
+  });
+}
+
+function createAppError(message, details = {}) {
+  const error = new Error(message || "Request failed");
+  error.isAppError = true;
+  Object.assign(error, details);
+  return error;
+}
+
+function normalizeError(error) {
+  if (error && error.isAppError) {
+    return error;
+  }
+  return createAppError(error?.message || "Request failed", {
+    retryable: true,
+  });
+}
+
+function providerErrorUserMessage(category) {
+  const messages = {
+    authentication: "The provider rejected authentication. Check the server OpenAI key.",
+    permission: "The provider denied access for this model or workspace.",
+    not_found: "The configured provider model or endpoint was not found.",
+    invalid_request: "The provider rejected the request format or parameters.",
+    rate_limit: "The provider rate limit was reached. Wait briefly, then retry.",
+    timeout: "The provider timed out before completing the request.",
+    network: "The provider network request failed. Check connectivity, then retry.",
+    server_error: "The provider returned a server error. Retry after a short wait.",
+    conflict: "The provider could not process the request right now.",
+  };
+  return messages[category] || "The request failed before the assistant could answer.";
+}
+
+function httpErrorUserMessage(status, fallbackMessage) {
+  if (status === 401) {
+    return "The API key was rejected. Update the API key and retry.";
+  }
+  if (status === 403) {
+    return "This API key cannot access the selected workspace.";
+  }
+  if (status === 404) {
+    return "The selected workspace or session was not found.";
+  }
+  if (status === 429) {
+    return "Too many requests. Wait briefly, then retry.";
+  }
+  return fallbackMessage || "The request could not be completed.";
+}
+
+function buildErrorMetaItems(error) {
+  const items = [];
+  if (error.status) {
+    items.push(`HTTP ${error.status}`);
+  }
+  if (error.category) {
+    items.push(`Category: ${error.category}`);
+  }
+  if (typeof error.retryable === "boolean") {
+    items.push(`Retryable: ${error.retryable ? "yes" : "no"}`);
+  }
+  if (error.requestId) {
+    items.push(`Request: ${error.requestId}`);
+  }
+  return items;
+}
+
+function formatStatusError(error) {
+  if (error.category) {
+    return `Error: ${error.category}`;
+  }
+  if (error.status) {
+    return `Error: HTTP ${error.status}`;
+  }
+  return "Request failed";
 }
 
 function renderEmptyMessages() {

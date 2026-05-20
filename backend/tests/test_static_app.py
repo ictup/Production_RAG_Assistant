@@ -35,6 +35,11 @@ def test_static_app_serves_assets() -> None:
     assert "const state" in script_response.text
     assert "uploadDocument" in script_response.text
     assert "reindexDocuments" in script_response.text
+    assert "renderMessageError" in script_response.text
+    assert "providerErrorUserMessage" in script_response.text
+    assert "Retry" in script_response.text
     assert style_response.status_code == 200
     assert ".chat-panel" in style_response.text
     assert ".knowledge-panel" in style_response.text
+    assert ".message-error" in style_response.text
+    assert ".retry-button" in style_response.text

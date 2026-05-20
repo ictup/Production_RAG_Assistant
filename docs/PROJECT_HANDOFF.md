@@ -1128,8 +1128,8 @@ Repository -> Settings -> Actions -> General
 - 最小 Web UI 已完成：`GET /app/`。
 - 聊天 UI 已支持 session 创建、session 列表、history 加载和 SSE streaming。
 - 文档 UI 已支持 Markdown 上传、文档列表、reindex dry-run 和 write。
+- 聊天错误恢复体验已完成基础版：provider/HTTP 错误会在 assistant 消息内展示分类、request id、retryable 状态和 Retry 按钮。
 - 没有管理后台。
-- 聊天页面还没有更完整的错误恢复体验。
 
 ### 生产部署
 
@@ -1214,6 +1214,7 @@ OPENAI_API_KEY
 7. 简单前端聊天 UI。
 8. 文档上传 UI。
 9. 多轮 query contextualization。已完成。
+10. chat error recovery UX。已完成。
 
 ### 阶段 E：生产化
 
@@ -1240,7 +1241,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-chat error recovery UX
+README project homepage
 ```
 
 原因：
@@ -1252,7 +1253,7 @@ chat error recovery UX
 - OpenAI generator 已可纳入 eval runner。
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
-- provider token/cost 统计和 embedding/generation latency 细分已完成，下一步可以改善前端错误恢复，让真实 provider 失败、限流或超时时更容易被用户理解和重试。
+- 聊天错误恢复基础体验已完成，下一步可以扩展 README，让新机器和新协作者更快理解项目能力、启动方式、验证命令和生产化边界。
 
 启用 OpenAI embedding 后可以先跑：
 

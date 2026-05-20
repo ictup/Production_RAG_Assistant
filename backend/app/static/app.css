@@ -301,6 +301,54 @@ textarea:focus {
   line-height: 1.55;
 }
 
+.message-error {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(180, 35, 24, 0.28);
+  border-radius: 8px;
+  background: #fff7f6;
+  padding: 10px;
+}
+
+.error-title {
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.error-detail,
+.error-meta {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.error-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.error-meta div {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  padding: 3px 8px;
+}
+
+.message-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.retry-button {
+  min-height: 32px;
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 750;
+}
+
 .sources {
   display: grid;
   gap: 6px;
