@@ -57,8 +57,9 @@ validated release gates.
   rule-based classification, risk checks, MCP-style tool specs, a
   `rag_search_tool` backed by the existing RAG retriever, SQL-backed
   `ticket_lookup_tool`, deterministic cited `draft_response_tool`, node-level
-  graph runner records, `agent_approvals` persistence, and a
-  `/agent/support-triage` API skeleton.
+  graph runner records, `agent_approvals` persistence, approval API endpoints,
+  and a `/agent/support-triage` API that creates pending approvals for
+  high-risk requests.
 - FastAPI API for chat, streaming chat, documents, workspaces, sessions, export
   jobs, health, and metrics.
 - Workspace management API with create, update, list, detail, soft archive,
@@ -251,7 +252,7 @@ uv run python -m backend.app.rag.reindex_embeddings --workspace-id public --writ
 
 ## Common API Calls
 
-Agent support triage skeleton:
+Agent support triage and approvals:
 
 ```text
 POST /agent/support-triage

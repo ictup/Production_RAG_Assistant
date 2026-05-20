@@ -16,7 +16,11 @@ from backend.app.agent.state import AgentState
 from backend.app.agent.ticket_lookup import TicketLookupInput, ticket_lookup_tool
 from backend.app.agent.tools import ToolCallRecord
 from backend.app.core.tracing import trace_span
-from backend.app.db.repositories import SupportTicketRepository
+from backend.app.db.repositories import (
+    AgentApprovalRepository,
+    CreateAgentApprovalInput,
+    SupportTicketRepository,
+)
 from backend.app.rag.pipeline import RagPipeline
 from backend.app.schemas.agent import AgentTriageResponse, SupportTicketRequest
 
@@ -30,6 +34,8 @@ async def run_support_triage_skeleton(
     *,
     rag_pipeline: RagPipeline,
     support_ticket_repository: SupportTicketRepository,
+    agent_approval_repository: AgentApprovalRepository,
+    actor_hash: str,
     request_id: str,
     trace_id: str | None = None,
 ) -> AgentTriageResponse:
@@ -336,12 +342,40 @@ async def run_support_triage_skeleton(
         raise RuntimeError("support triage graph did not produce risk state")
 
     if risk.approval_required:
+        approval = await agent_approval_repository.create_agent_approval(
+            CreateAgentApprovalInput(
+                run_id=run_id,
+                ticket_id=request.ticket_id,
+                workspace_id=request.workspace_id,
+                request_id=request_id,
+                actor_hash=actor_hash,
+                category=classification.category,
+                risk_level=risk.risk_level,
+                reason=risk.reason,
+                customer_message=request.customer_message,
+                draft_answer=state["draft_answer"] or "",
+                tool_calls=tool_call_payloads,
+                node_runs=state["node_runs"],
+                metadata={
+                    **request.metadata,
+                    "priority": request.priority,
+                    "customer_tier": request.customer_tier,
+                },
+            ),
+            commit=True,
+        )
+        state["approval_id"] = str(approval.id)
+        state["metrics"] = {
+            **state["metrics"],
+            "approval_created": True,
+        }
         return AgentTriageResponse(
             run_id=run_id,
             status="approval_required",
             category=classification.category,
             risk_level=risk.risk_level,
             approval_required=True,
+            approval_id=str(approval.id),
             draft_answer=state["draft_answer"],
             reason=risk.reason,
             tool_calls=tool_call_payloads,

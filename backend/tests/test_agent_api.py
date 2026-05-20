@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from hashlib import sha256
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -93,9 +94,35 @@ class FakeAgentApprovalRepository:
         self.approval = make_agent_approval() if approval is MISSING else approval
         self.total = total
         self.decision_error = decision_error
+        self.create_calls = []
         self.list_calls = []
         self.get_calls = []
         self.decision_calls = []
+
+    async def create_agent_approval(self, approval_input, **kwargs):
+        self.create_calls.append(
+            {
+                "approval_input": approval_input,
+                **kwargs,
+            }
+        )
+        approval = make_agent_approval()
+        approval.id = uuid.UUID("88888888-8888-8888-8888-888888888888")
+        approval.run_id = approval_input.run_id
+        approval.ticket_id = approval_input.ticket_id
+        approval.workspace_id = approval_input.workspace_id
+        approval.request_id = approval_input.request_id
+        approval.actor_hash = approval_input.actor_hash
+        approval.category = approval_input.category
+        approval.risk_level = approval_input.risk_level
+        approval.reason = approval_input.reason
+        approval.customer_message = approval_input.customer_message
+        approval.draft_answer = approval_input.draft_answer
+        approval.tool_calls = approval_input.tool_calls
+        approval.node_runs = approval_input.node_runs
+        approval.metadata_ = approval_input.metadata
+        self.approval = approval
+        return approval
 
     async def list_agent_approvals(self, **kwargs):
         self.list_calls.append(dict(kwargs))
@@ -175,9 +202,11 @@ def build_client(
 def test_support_triage_route_returns_finalized_skeleton_response() -> None:
     fake_pipeline = FakeRagPipeline()
     fake_ticket_repository = FakeSupportTicketRepository()
+    fake_approval_repository = FakeAgentApprovalRepository()
     client = build_client(
         fake_pipeline=fake_pipeline,
         fake_ticket_repository=fake_ticket_repository,
+        fake_approval_repository=fake_approval_repository,
     )
 
     response = client.post(
@@ -245,14 +274,17 @@ def test_support_triage_route_returns_finalized_skeleton_response() -> None:
             "limit": 5,
         }
     ]
+    assert fake_approval_repository.create_calls == []
 
 
 def test_support_triage_route_returns_approval_required_for_high_risk_ticket() -> None:
     fake_pipeline = FakeRagPipeline()
     fake_ticket_repository = FakeSupportTicketRepository()
+    fake_approval_repository = FakeAgentApprovalRepository()
     client = build_client(
         fake_pipeline=fake_pipeline,
         fake_ticket_repository=fake_ticket_repository,
+        fake_approval_repository=fake_approval_repository,
     )
 
     response = client.post(
@@ -272,7 +304,7 @@ def test_support_triage_route_returns_approval_required_for_high_risk_ticket() -
     assert body["category"] == "data_privacy"
     assert body["risk_level"] == "high"
     assert body["approval_required"] is True
-    assert body["approval_id"] is None
+    assert body["approval_id"] == "88888888-8888-8888-8888-888888888888"
     assert body["draft_answer"] is not None
     assert body["final_answer"] is None
     assert body["sources"] == []
@@ -285,8 +317,23 @@ def test_support_triage_route_returns_approval_required_for_high_risk_ticket() -
         "classify_ticket",
         "risk_check",
     ]
+    assert body["metrics"]["approval_created"] is True
     assert fake_pipeline.requests == []
     assert fake_ticket_repository.calls == []
+    assert len(fake_approval_repository.create_calls) == 1
+    create_call = fake_approval_repository.create_calls[0]
+    approval_input = create_call["approval_input"]
+    assert approval_input.run_id == body["run_id"]
+    assert approval_input.ticket_id == "TICKET-2"
+    assert approval_input.workspace_id == "public"
+    assert approval_input.request_id != ""
+    assert approval_input.actor_hash == sha256(b"dev-key").hexdigest()
+    assert approval_input.category == "data_privacy"
+    assert approval_input.risk_level == "high"
+    assert approval_input.reason == body["reason"]
+    assert approval_input.draft_answer == body["draft_answer"]
+    assert approval_input.node_runs[-1]["node_name"] == "risk_check"
+    assert create_call["commit"] is True
 
 
 def test_support_triage_route_requires_api_key() -> None:

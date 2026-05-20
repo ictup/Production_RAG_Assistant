@@ -18,6 +18,24 @@ class FakeSupportTicketRepository:
         return []
 
 
+class FakeAgentApprovalRepository:
+    def __init__(self) -> None:
+        self.create_calls = []
+
+    async def create_agent_approval(self, approval_input, **kwargs):
+        self.create_calls.append(
+            {
+                "approval_input": approval_input,
+                **kwargs,
+            }
+        )
+        return type(
+            "Approval",
+            (),
+            {"id": "77777777-7777-7777-7777-777777777777"},
+        )()
+
+
 class FakeRagPipeline:
     def __init__(self) -> None:
         self.requests = []
@@ -55,6 +73,7 @@ def test_build_agent_run_id_uses_request_id() -> None:
 async def test_support_triage_skeleton_finalizes_safe_ticket() -> None:
     fake_pipeline = FakeRagPipeline()
     fake_ticket_repository = FakeSupportTicketRepository()
+    fake_approval_repository = FakeAgentApprovalRepository()
 
     response = await run_support_triage_skeleton(
         SupportTicketRequest(
@@ -63,6 +82,8 @@ async def test_support_triage_skeleton_finalizes_safe_ticket() -> None:
         ),
         rag_pipeline=fake_pipeline,  # type: ignore[arg-type]
         support_ticket_repository=fake_ticket_repository,  # type: ignore[arg-type]
+        agent_approval_repository=fake_approval_repository,  # type: ignore[arg-type]
+        actor_hash="a" * 64,
         request_id="request-1",
         trace_id="trace-1",
     )
@@ -118,12 +139,14 @@ async def test_support_triage_skeleton_finalizes_safe_ticket() -> None:
             "limit": 5,
         }
     ]
+    assert fake_approval_repository.create_calls == []
 
 
 @pytest.mark.asyncio
 async def test_support_triage_skeleton_routes_high_risk_ticket_to_approval() -> None:
     fake_pipeline = FakeRagPipeline()
     fake_ticket_repository = FakeSupportTicketRepository()
+    fake_approval_repository = FakeAgentApprovalRepository()
 
     response = await run_support_triage_skeleton(
         SupportTicketRequest(
@@ -132,6 +155,8 @@ async def test_support_triage_skeleton_routes_high_risk_ticket_to_approval() -> 
         ),
         rag_pipeline=fake_pipeline,  # type: ignore[arg-type]
         support_ticket_repository=fake_ticket_repository,  # type: ignore[arg-type]
+        agent_approval_repository=fake_approval_repository,  # type: ignore[arg-type]
+        actor_hash="b" * 64,
         request_id="request-2",
     )
 
@@ -139,7 +164,7 @@ async def test_support_triage_skeleton_routes_high_risk_ticket_to_approval() -> 
     assert response.category == "data_privacy"
     assert response.risk_level == "high"
     assert response.approval_required is True
-    assert response.approval_id is None
+    assert response.approval_id == "77777777-7777-7777-7777-777777777777"
     assert response.final_answer is None
     assert response.draft_answer is not None
     assert response.reason is not None
@@ -153,3 +178,16 @@ async def test_support_triage_skeleton_routes_high_risk_ticket_to_approval() -> 
     ]
     assert fake_pipeline.requests == []
     assert fake_ticket_repository.calls == []
+    assert len(fake_approval_repository.create_calls) == 1
+    create_call = fake_approval_repository.create_calls[0]
+    approval_input = create_call["approval_input"]
+    assert approval_input.run_id == "agent_request-2"
+    assert approval_input.ticket_id == "TICKET-2"
+    assert approval_input.workspace_id == "public"
+    assert approval_input.request_id == "request-2"
+    assert approval_input.actor_hash == "b" * 64
+    assert approval_input.category == "data_privacy"
+    assert approval_input.risk_level == "high"
+    assert approval_input.tool_calls[0]["tool_name"] == "classify_ticket_tool"
+    assert approval_input.node_runs[-1]["node_name"] == "risk_check"
+    assert create_call["commit"] is True

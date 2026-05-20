@@ -136,6 +136,9 @@ docs/agentic_rag_extension.md
   `GET /agent/approvals/{approval_id}` 和
   `POST /agent/approvals/{approval_id}/decision` 已支持 workspace 权限和
   API key role 检查
+- Agentic RAG 高风险审批写入：`POST /agent/support-triage` 在返回
+  `approval_required` 时会自动创建 pending `agent_approvals` 记录并返回
+  `approval_id`
 - API key 鉴权：`Authorization: Bearer dev-key`
 - workspace 隔离头：`X-Workspace-ID`
 - API key workspace 访问控制：`API_KEY_WORKSPACE_ACCESS`

@@ -80,9 +80,8 @@ migration advice, and latency troubleshooting.
 
 ## Planned Next Steps
 
-1. Connect high-risk workflow runs to pending approval creation.
-2. Add agent-specific Prometheus metrics.
-3. Add 30 support eval cases and an agent eval report.
+1. Add agent-specific Prometheus metrics.
+2. Add 30 support eval cases and an agent eval report.
 
 ## Step 2 Scope
 
@@ -186,6 +185,23 @@ POST /agent/approvals/{approval_id}/decision
 The list and detail endpoints require an operator role and enforce workspace
 access. The decision endpoint requires an admin role and accepts only
 `approved` or `rejected` decisions with optional human feedback. The endpoints
-read and update existing `agent_approvals` rows. The support triage workflow
-still does not create approval rows automatically; that remains the next wiring
-step.
+read and update existing `agent_approvals` rows. At this step, the support
+triage workflow did not create approval rows automatically; that wiring was
+added in Step 9.
+
+## Step 9 Scope
+
+The ninth implementation step connects high-risk support triage runs to pending
+approval creation:
+
+```text
+POST /agent/support-triage
+-> risk_check
+-> AgentApprovalRepository.create_agent_approval
+```
+
+When a request requires human approval, the workflow now creates a pending
+`agent_approvals` row containing the run ID, ticket ID, workspace ID, request
+ID, actor hash, category, risk reason, customer message, draft answer,
+tool calls, node runs, and request metadata. The API response returns the
+created `approval_id`. Low-risk finalized requests do not create approval rows.

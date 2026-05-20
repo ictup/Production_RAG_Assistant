@@ -1,4 +1,5 @@
 import uuid
+from hashlib import sha256
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -64,6 +65,10 @@ async def support_triage(
         SupportTicketRepository,
         Depends(get_support_ticket_repository),
     ],
+    approval_repository: Annotated[
+        AgentApprovalRepository,
+        Depends(get_agent_approval_repository),
+    ],
     workspace_repository: Annotated[
         WorkspaceRepository,
         Depends(get_workspace_repository),
@@ -81,6 +86,8 @@ async def support_triage(
         normalized_request,
         rag_pipeline=rag_pipeline,
         support_ticket_repository=support_ticket_repository,
+        agent_approval_repository=approval_repository,
+        actor_hash=hash_principal_token(principal),
         request_id=get_request_id(raw_request),
         trace_id=get_trace_id(),
     )
@@ -138,6 +145,10 @@ async def get_agent_approval(
             detail="agent approval not found",
         )
     return AgentApprovalResponse.from_model(approval)
+
+
+def hash_principal_token(principal: ApiPrincipal) -> str:
+    return sha256(principal.token.encode("utf-8")).hexdigest()
 
 
 @router.post(

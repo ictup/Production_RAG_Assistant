@@ -17,6 +17,7 @@ def test_build_initial_agent_state_sets_safe_defaults() -> None:
     assert state["category"] is None
     assert state["risk_level"] is None
     assert state["approval_required"] is False
+    assert state["approval_id"] is None
     assert state["cited_source_ids"] == []
     assert state["cited_case_ids"] == []
     assert state["tool_calls"] == []
