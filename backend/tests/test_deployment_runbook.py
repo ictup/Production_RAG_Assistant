@@ -52,3 +52,13 @@ def test_deployment_runbook_is_linked_from_entry_documents() -> None:
     assert expected_link in README_PATH.read_text(encoding="utf-8")
     assert expected_link in HANDOFF_PATH.read_text(encoding="utf-8")
     assert expected_link in CONFIGURATION_PATH.read_text(encoding="utf-8")
+
+
+def test_deployment_runbook_points_to_secret_manager_mapping() -> None:
+    runbook = RUNBOOK_PATH.read_text(encoding="utf-8")
+
+    assert "docs/SECRET_MANAGER_MAPPING.md" in runbook
+    assert "deployment platform's" in runbook
+    assert "secret store" in runbook
+    assert "API_KEYS" in runbook
+    assert "OPENAI_API_KEY" in runbook

@@ -34,6 +34,12 @@ docs/CONFIGURATION.md
 docs/DEPLOYMENT_RUNBOOK.md
 ```
 
+当前生产 secret manager 映射文档：
+
+```text
+docs/SECRET_MANAGER_MAPPING.md
+```
+
 当前可观测性文档：
 
 ```text
@@ -265,6 +271,12 @@ monitoring/
 
 ```text
 docs/CONFIGURATION.md
+```
+
+生产部署平台 secret manager 映射见：
+
+```text
+docs/SECRET_MANAGER_MAPPING.md
 ```
 
 部署前可以运行不会打印 secret 值的配置预检：
@@ -926,7 +938,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-576 passed
+579 passed
 ```
 
 ### Pipeline Smoke
@@ -1339,12 +1351,13 @@ Completed: 2026-05-20T09:51:56Z
 - production export worker 服务已完成：`export-worker` 使用同一镜像运行 `python -m backend.app.exporting.worker --loop`，并与 API 共享导出文件 volume。
 - 环境变量和 secrets 文档已完成：`docs/CONFIGURATION.md`。
 - 配置预检 CLI 已完成：`python -m backend.app.core.config_check` 和 `--production` 会在不打印 secret 值的情况下检查 OpenAI key、生产 API key、CORS credential 边界、workspace scoping、rate limit 和本地数据库 URL 风险。
+- 生产部署平台 secret manager 映射已完成：`docs/SECRET_MANAGER_MAPPING.md` 明确了 managed secrets、plain runtime config、注入模式和轮换流程。
 - 部署 runbook 已完成：`docs/DEPLOYMENT_RUNBOOK.md`。
 - CORS 策略已完成：默认关闭，通过 `CORS_ALLOWED_ORIGINS` 或 `CORS_ALLOWED_ORIGIN_REGEX` 显式开启。
 - rate limit 已完成：默认关闭，通过 `RATE_LIMIT_ENABLED` 显式开启。
 - API key 到 workspace 的访问控制已完成：`API_KEY_WORKSPACE_ACCESS`、`ApiPrincipal`、越权返回 403。
 - 更完整的用户/角色/组织模型。
-- secrets 管理仍需接入真实部署平台或 secret manager。
+- secret manager 基础映射文档已完成；真实部署时仍需要把对应变量填入目标平台的 secret/config UI 或 CLI。
 
 ### 可观测性
 
@@ -1463,19 +1476,20 @@ OPENAI_API_KEY
 37. 导出任务运维补强：失败任务手动重试。已完成。
 38. 真实 OpenAI 端到端验证。已完成。
 39. 生产配置和 secrets 收紧：配置预检 CLI。已完成。
+40. 生产部署平台 secrets 接入说明。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-生产部署平台 secrets 接入说明和最终 release 收口
+管理后台权限分层基础版
 ```
 
 原因：
 
-- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker、production compose 编排、running 超时恢复、过期文件清理、失败任务手动重试、真实 OpenAI 端到端验证和配置预检 CLI 已完成。
-- 下一步可以补充具体部署平台 secret manager 映射说明，并做最终 release 收口。
+- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker、production compose 编排、running 超时恢复、过期文件清理、失败任务手动重试、真实 OpenAI 端到端验证、配置预检 CLI 和 secret manager 映射文档已完成。
+- 下一步可以补齐管理后台权限分层基础版，明确 admin/operator/viewer 这类角色边界。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

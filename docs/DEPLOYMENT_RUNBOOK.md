@@ -4,7 +4,8 @@ This runbook describes how to bring up, verify, update, stop, and recover the
 production-style local stack. Configuration details live in
 `docs/CONFIGURATION.md`. Metrics, dashboard, and alert templates live in
 `docs/OBSERVABILITY.md`. Postgres slow query monitoring lives in
-`docs/DATABASE_OBSERVABILITY.md`.
+`docs/DATABASE_OBSERVABILITY.md`. Production secret manager mapping lives in
+`docs/SECRET_MANAGER_MAPPING.md`.
 
 ## Scope
 
@@ -58,6 +59,11 @@ Edit `.env` before starting the stack:
 - If using OpenAI providers, set `OPENAI_API_KEY` in `.env` or a secret manager.
 - Configure `CORS_ALLOWED_ORIGINS` when a browser frontend uses another origin.
 - Enable `RATE_LIMIT_ENABLED=true` when the API is exposed beyond local use.
+
+For shared staging or production, do not treat `.env` as the source of truth.
+Use `docs/SECRET_MANAGER_MAPPING.md` to map `API_KEYS`, database URLs,
+`OPENAI_API_KEY`, and other sensitive values into the deployment platform's
+secret store. Keep non-secret tuning values as platform runtime configuration.
 
 Validate Compose without printing resolved environment values:
 

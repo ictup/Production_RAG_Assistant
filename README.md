@@ -156,13 +156,15 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `576 passed`.
+Current local baseline: `579 passed`.
 
 ## Configuration Model
 
 Runtime configuration comes from `.env`. Keep `.env` local-only and use
 `.env.example` as the template. The full configuration reference is
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+Production secret manager mapping is documented in
+[docs/SECRET_MANAGER_MAPPING.md](docs/SECRET_MANAGER_MAPPING.md).
 Run `uv run python -m backend.app.core.config_check --production` before shared
 or real production deployment; it reports only variable names and remediation
 guidance, not secret values.
@@ -375,6 +377,7 @@ The secret scan should only match intentional placeholders, never real keys.
 
 - [Project handoff and quick start](docs/PROJECT_HANDOFF.md)
 - [Configuration and secrets guide](docs/CONFIGURATION.md)
+- [Secret manager mapping](docs/SECRET_MANAGER_MAPPING.md)
 - [Deployment runbook](docs/DEPLOYMENT_RUNBOOK.md)
 - [Observability guide](docs/OBSERVABILITY.md)
 - [Database observability guide](docs/DATABASE_OBSERVABILITY.md)

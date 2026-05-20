@@ -4,6 +4,7 @@ ENV_EXAMPLE_PATH = Path(".env.example")
 CONFIGURATION_DOC_PATH = Path("docs/CONFIGURATION.md")
 README_PATH = Path("README.md")
 HANDOFF_PATH = Path("docs/PROJECT_HANDOFF.md")
+SECRET_MANAGER_DOC_PATH = Path("docs/SECRET_MANAGER_MAPPING.md")
 
 
 def load_env_example_keys() -> set[str]:
@@ -36,6 +37,14 @@ def test_configuration_doc_is_linked_from_readme_and_handoff() -> None:
     assert "docs/CONFIGURATION.md" in HANDOFF_PATH.read_text(encoding="utf-8")
 
 
+def test_secret_manager_mapping_is_linked_from_entry_docs() -> None:
+    expected_link = "docs/SECRET_MANAGER_MAPPING.md"
+
+    assert expected_link in CONFIGURATION_DOC_PATH.read_text(encoding="utf-8")
+    assert expected_link in README_PATH.read_text(encoding="utf-8")
+    assert expected_link in HANDOFF_PATH.read_text(encoding="utf-8")
+
+
 def test_configuration_doc_warns_against_printing_secrets() -> None:
     documented_config = CONFIGURATION_DOC_PATH.read_text(encoding="utf-8")
 
@@ -58,3 +67,32 @@ def test_env_example_has_commented_openai_provider_preset_without_real_key() -> 
     assert "# QUERY_REWRITE_MODEL=gpt-5.4-nano" in env_example
     assert "# RERANKER_MODEL=gpt-5.4-nano" in env_example
     assert ("s" + "k-") not in env_example
+
+
+def test_secret_manager_mapping_classifies_sensitive_runtime_values() -> None:
+    secret_mapping = SECRET_MANAGER_DOC_PATH.read_text(encoding="utf-8")
+
+    required_secret_values = [
+        "`API_KEYS`",
+        "`API_KEY_WORKSPACE_ACCESS`",
+        "`POSTGRES_PASSWORD`",
+        "`DATABASE_URL`",
+        "`SYNC_DATABASE_URL`",
+        "`OPENAI_API_KEY`",
+    ]
+    missing_secret_values = [
+        value for value in required_secret_values if value not in secret_mapping
+    ]
+
+    assert missing_secret_values == []
+    assert "## Managed Secrets" in secret_mapping
+    assert "## Plain Runtime Configuration" in secret_mapping
+    assert "## Rotation Workflow" in secret_mapping
+    assert (
+        "uv run python -m backend.app.core.config_check --production"
+        in secret_mapping
+    )
+    assert (
+        "Never use a command that prints resolved environment values"
+        in secret_mapping
+    )

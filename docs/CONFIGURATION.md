@@ -4,6 +4,7 @@ This guide is the source of truth for runtime configuration. Keep `.env`
 local-only, use `.env.example` as the template, and never commit real secrets.
 For operational startup, verification, logging, and recovery steps, use
 `docs/DEPLOYMENT_RUNBOOK.md`.
+For production secret manager mapping, use `docs/SECRET_MANAGER_MAPPING.md`.
 
 ## Quick Start
 
@@ -100,6 +101,8 @@ contextualized before retrieval.
 
 - Never commit `.env`, real API keys, database passwords, or production tokens.
 - Keep only placeholders in `.env.example`.
+- Store shared or production secrets according to
+  `docs/SECRET_MANAGER_MAPPING.md`.
 - Use `API_KEYS` for client authentication tokens; rotate them by updating the
   deployment secret and restarting the API.
 - Use `API_KEY_WORKSPACE_ACCESS` when one API key should be limited to specific
@@ -115,6 +118,10 @@ contextualized before retrieval.
 - Before committing, run the repository secret scan command from this guide.
 
 ## Environment Variables
+
+Secret manager classification is maintained in
+`docs/SECRET_MANAGER_MAPPING.md`. The table below remains the complete runtime
+configuration reference.
 
 ### Application
 

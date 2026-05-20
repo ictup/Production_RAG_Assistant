@@ -44,6 +44,7 @@ def test_readme_documents_core_commands_and_links() -> None:
         "http://127.0.0.1:8000/app/",
         "docs/PROJECT_HANDOFF.md",
         "docs/CONFIGURATION.md",
+        "docs/SECRET_MANAGER_MAPPING.md",
         "docs/DEPLOYMENT_RUNBOOK.md",
         "docs/OBSERVABILITY.md",
         "docs/DATABASE_OBSERVABILITY.md",
