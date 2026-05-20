@@ -125,6 +125,9 @@ def test_support_triage_route_returns_finalized_skeleton_response() -> None:
     assert body["category"] == "rag_failure"
     assert body["risk_level"] == "low"
     assert body["approval_required"] is False
+    assert body["draft_answer"] == body["final_answer"]
+    assert "Citation Debugging" in body["final_answer"]
+    assert "[1]" in body["final_answer"]
     assert body["trace_id"] == "trace-1"
     assert body["sources"][0]["chunk_id"] == "chunk-1"
     assert body["retrieval_context"] == (
@@ -132,14 +135,20 @@ def test_support_triage_route_returns_finalized_skeleton_response() -> None:
     )
     assert body["retrieval"]["top_score"] == 0.92
     assert body["historical_cases"] == []
-    assert body["metrics"]["tool_count"] == 4
+    assert body["cited_source_ids"] == ["1"]
+    assert body["cited_case_ids"] == []
+    assert body["metrics"]["tool_count"] == 5
+    assert body["metrics"]["citation_valid"] is True
     assert body["metrics"]["retrieved_source_count"] == 1
     assert body["metrics"]["historical_case_count"] == 0
+    assert body["metrics"]["cited_source_count"] == 1
+    assert body["metrics"]["cited_case_count"] == 0
     assert [tool_call["tool_name"] for tool_call in body["tool_calls"]] == [
         "classify_ticket_tool",
         "risk_check_tool",
         "rag_search_tool",
         "ticket_lookup_tool",
+        "draft_response_tool",
     ]
     assert len(fake_pipeline.requests) == 1
     assert fake_pipeline.requests[0].workspace_id == "public"
@@ -184,6 +193,8 @@ def test_support_triage_route_returns_approval_required_for_high_risk_ticket() -
     assert body["sources"] == []
     assert body["retrieval"] == {}
     assert body["historical_cases"] == []
+    assert body["cited_source_ids"] == []
+    assert body["cited_case_ids"] == []
     assert fake_pipeline.requests == []
     assert fake_ticket_repository.calls == []
 

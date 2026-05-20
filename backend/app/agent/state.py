@@ -28,6 +28,8 @@ class AgentState(TypedDict):
     retrieved_sources: list[dict[str, Any]]
     historical_cases: list[dict[str, Any]]
     draft_answer: str | None
+    cited_source_ids: list[str]
+    cited_case_ids: list[str]
     approval_required: bool
     approval_status: ApprovalStatus | None
     human_feedback: str | None
@@ -61,6 +63,8 @@ def build_initial_agent_state(
         retrieved_sources=[],
         historical_cases=[],
         draft_answer=None,
+        cited_source_ids=[],
+        cited_case_ids=[],
         approval_required=False,
         approval_status=None,
         human_feedback=None,
@@ -70,4 +74,3 @@ def build_initial_agent_state(
         errors=[],
         metrics={},
     )
-

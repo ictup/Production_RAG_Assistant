@@ -109,7 +109,9 @@ DRAFT_RESPONSE_TOOL_SPEC = ToolSpec(
         "type": "object",
         "properties": {
             "customer_message": {"type": "string"},
+            "category": {"type": "string"},
             "sources": {"type": "array"},
+            "retrieval_context": {"type": ["string", "null"]},
             "historical_cases": {"type": "array"},
         },
         "required": ["customer_message"],
@@ -119,6 +121,7 @@ DRAFT_RESPONSE_TOOL_SPEC = ToolSpec(
         "properties": {
             "draft": {"type": "string"},
             "cited_source_ids": {"type": "array"},
+            "cited_case_ids": {"type": "array"},
             "citation_valid": {"type": "boolean"},
         },
     },

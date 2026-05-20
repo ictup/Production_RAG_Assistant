@@ -81,11 +81,10 @@ migration advice, and latency troubleshooting.
 ## Planned Next Steps
 
 1. Add the graph runner abstraction, initially without LangGraph.
-2. Add cited draft response generation.
-3. Add `agent_approvals` database table.
-4. Add approval API endpoints.
-5. Add agent-specific Prometheus metrics.
-6. Add 30 support eval cases and an agent eval report.
+2. Add `agent_approvals` database table.
+3. Add approval API endpoints.
+4. Add agent-specific Prometheus metrics.
+5. Add 30 support eval cases and an agent eval report.
 
 ## Step 2 Scope
 
@@ -126,3 +125,18 @@ repository filters by workspace, category, query text, and optional tags. The
 agent low-risk path now calls `ticket_lookup_tool` after `rag_search_tool` and
 returns `historical_cases` in `AgentTriageResponse`. No write API is exposed for
 support tickets yet.
+
+## Step 5 Scope
+
+The fifth implementation step adds deterministic cited draft generation:
+
+```text
+draft_response_tool
+```
+
+The tool builds a customer-facing support draft from retrieved RAG sources,
+retrieval context, and historical cases. It returns the draft, cited source IDs,
+cited historical case IDs, and a citation validation boolean. The low-risk
+agent path now calls `draft_response_tool` after `ticket_lookup_tool`, returns
+the draft as the finalized response, and records citation metrics. This step
+does not call an external LLM and does not create approval records yet.

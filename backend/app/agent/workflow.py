@@ -1,5 +1,9 @@
 import time
 
+from backend.app.agent.draft_response import (
+    DraftResponseInput,
+    draft_response_tool,
+)
 from backend.app.agent.policies import check_support_risk, classify_ticket
 from backend.app.agent.rag_search import RAGSearchInput, rag_search_tool
 from backend.app.agent.ticket_lookup import TicketLookupInput, ticket_lookup_tool
@@ -198,20 +202,64 @@ async def run_support_triage_skeleton(
         for tool_call in tool_calls
     ]
     state["historical_cases"] = ticket_lookup.cases
+
+    draft_started_at = time.perf_counter()
+    with trace_span(
+        "agent.draft_response",
+        {
+            "workspace_id": request.workspace_id,
+            "category": classification.category,
+            "source_count": len(rag_search.sources),
+            "historical_case_count": len(ticket_lookup.cases),
+        },
+    ):
+        draft_response = await draft_response_tool(
+            DraftResponseInput(
+                customer_message=request.customer_message,
+                category=classification.category,
+                sources=rag_search.sources,
+                retrieval_context=rag_search.context,
+                historical_cases=ticket_lookup.cases,
+            )
+        )
+    tool_calls.append(
+        ToolCallRecord(
+            tool_name="draft_response_tool",
+            input_summary={
+                "message_length": len(request.customer_message),
+                "category": classification.category,
+                "source_count": len(rag_search.sources),
+                "historical_case_count": len(ticket_lookup.cases),
+            },
+            output_summary={
+                "citation_valid": draft_response.citation_valid,
+                "cited_source_count": len(draft_response.cited_source_ids),
+                "cited_case_count": len(draft_response.cited_case_ids),
+            },
+            latency_ms=elapsed_ms(draft_started_at),
+            success=True,
+        )
+    )
+    tool_call_payloads = [
+        tool_call.model_dump(mode="json")
+        for tool_call in tool_calls
+    ]
+    state["draft_answer"] = draft_response.draft
+    state["cited_source_ids"] = draft_response.cited_source_ids
+    state["cited_case_ids"] = draft_response.cited_case_ids
     state["tool_calls"] = tool_call_payloads
     state["metrics"] = {
         "latency_ms": elapsed_ms(started_at),
         "tool_count": len(tool_calls),
-        "citation_valid": None,
+        "citation_valid": draft_response.citation_valid,
         "retrieved_source_count": len(rag_search.sources),
         "historical_case_count": len(ticket_lookup.cases),
+        "cited_source_count": len(draft_response.cited_source_ids),
+        "cited_case_count": len(draft_response.cited_case_ids),
         "rag_refusal_recommended": rag_search.refusal_recommended,
     }
 
-    final_answer = (
-        f"Ticket classified as {classification.category}. The next workflow "
-        "step will draft a cited support response."
-    )
+    final_answer = draft_response.draft
     state["final_answer"] = final_answer
     return AgentTriageResponse(
         run_id=run_id,
@@ -220,11 +268,14 @@ async def run_support_triage_skeleton(
         risk_level=risk.risk_level,
         approval_required=False,
         final_answer=final_answer,
+        draft_answer=draft_response.draft,
         reason=risk.reason,
         sources=rag_search.sources,
         retrieval_context=rag_search.context,
         retrieval=rag_search.retrieval,
         historical_cases=ticket_lookup.cases,
+        cited_source_ids=draft_response.cited_source_ids,
+        cited_case_ids=draft_response.cited_case_ids,
         tool_calls=tool_call_payloads,
         metrics=state["metrics"],
         trace_id=trace_id,

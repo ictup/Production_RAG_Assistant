@@ -17,6 +17,8 @@ def test_build_initial_agent_state_sets_safe_defaults() -> None:
     assert state["category"] is None
     assert state["risk_level"] is None
     assert state["approval_required"] is False
+    assert state["cited_source_ids"] == []
+    assert state["cited_case_ids"] == []
     assert state["tool_calls"] == []
     assert state["errors"] == []
     assert state["metrics"] == {}
@@ -41,4 +43,3 @@ def test_support_ticket_request_builds_initial_state() -> None:
     assert state["workspace_id"] == "tenant-a"
     assert state["customer_tier"] == "enterprise"
     assert state["metadata"] == {"region": "eu"}
-

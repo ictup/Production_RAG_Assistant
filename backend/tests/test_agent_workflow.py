@@ -73,7 +73,9 @@ async def test_support_triage_skeleton_finalizes_safe_ticket() -> None:
     assert response.risk_level == "low"
     assert response.approval_required is False
     assert response.final_answer is not None
-    assert response.draft_answer is None
+    assert response.draft_answer == response.final_answer
+    assert "Citation Debugging" in response.final_answer
+    assert "[1]" in response.final_answer
     assert response.trace_id == "trace-1"
     assert response.sources[0]["chunk_id"] == "chunk-1"
     assert response.retrieval_context == (
@@ -81,14 +83,20 @@ async def test_support_triage_skeleton_finalizes_safe_ticket() -> None:
     )
     assert response.retrieval["top_score"] == 0.92
     assert response.historical_cases == []
-    assert response.metrics["tool_count"] == 4
+    assert response.cited_source_ids == ["1"]
+    assert response.cited_case_ids == []
+    assert response.metrics["tool_count"] == 5
+    assert response.metrics["citation_valid"] is True
     assert response.metrics["retrieved_source_count"] == 1
     assert response.metrics["historical_case_count"] == 0
+    assert response.metrics["cited_source_count"] == 1
+    assert response.metrics["cited_case_count"] == 0
     assert [tool_call["tool_name"] for tool_call in response.tool_calls] == [
         "classify_ticket_tool",
         "risk_check_tool",
         "rag_search_tool",
         "ticket_lookup_tool",
+        "draft_response_tool",
     ]
     assert len(fake_pipeline.requests) == 1
     assert fake_pipeline.requests[0].workspace_id == "public"

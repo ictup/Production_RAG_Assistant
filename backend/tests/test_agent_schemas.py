@@ -46,6 +46,8 @@ def test_agent_triage_response_defaults_to_empty_collections() -> None:
     assert response.retrieval_context is None
     assert response.retrieval == {}
     assert response.historical_cases == []
+    assert response.cited_source_ids == []
+    assert response.cited_case_ids == []
     assert response.tool_calls == []
     assert response.metrics == {}
 
