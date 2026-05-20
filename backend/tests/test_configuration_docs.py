@@ -41,3 +41,19 @@ def test_configuration_doc_warns_against_printing_secrets() -> None:
 
     assert "config --quiet" in documented_config
     assert "never commit real secrets" in documented_config.lower()
+
+
+def test_env_example_has_commented_openai_provider_preset_without_real_key() -> None:
+    env_example = ENV_EXAMPLE_PATH.read_text(encoding="utf-8")
+
+    assert "# Real OpenAI provider preset for local .env only:" in env_example
+    assert "# EMBEDDING_PROVIDER=openai" in env_example
+    assert "# GENERATOR_PROVIDER=openai" in env_example
+    assert "# QUERY_REWRITER_PROVIDER=openai" in env_example
+    assert "# RERANKER_PROVIDER=openai" in env_example
+    assert "# OPENAI_API_KEY=<set locally only>" in env_example
+    assert "# OPENAI_EMBEDDING_MODEL=text-embedding-3-small" in env_example
+    assert "# LLM_MODEL=gpt-5.4-nano" in env_example
+    assert "# QUERY_REWRITE_MODEL=gpt-5.4-nano" in env_example
+    assert "# RERANKER_MODEL=gpt-5.4-nano" in env_example
+    assert ("s" + "k-") not in env_example

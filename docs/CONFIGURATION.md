@@ -69,6 +69,10 @@ QUERY_REWRITE_MODEL=gpt-5.4-nano
 RERANKER_MODEL=gpt-5.4-nano
 ```
 
+`.env.example` includes the same values as a commented local preset. Copy those
+lines into `.env` and uncomment them when you need real providers, but keep the
+API key value local-only.
+
 After changing embedding provider for an existing database, reindex stored
 chunk embeddings so query vectors and stored vectors use the same model.
 OpenAI reranking uses the Responses API to rank the fused retrieval candidates

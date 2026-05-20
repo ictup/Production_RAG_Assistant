@@ -315,7 +315,7 @@ API_KEY_WORKSPACE_ACCESS=dev-key=*;tenant-key=tenant-a|tenant-b
 
 ```text
 EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=<set locally only>
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_TIMEOUT_SECONDS=30
@@ -813,7 +813,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-439 passed
+440 passed
 ```
 
 ### Pipeline Smoke
@@ -1186,7 +1186,7 @@ Completed: 2026-05-20T09:51:56Z
 建议步骤：
 
 1. 扩展 README，让它成为项目主页。已完成。
-2. 增加 `.env.example` 中真实 provider 的占位配置。
+2. 增加 `.env.example` 中真实 provider 的占位配置。已完成。
 3. 确认 GitHub Actions 在远端实际运行。已完成。
 
 ### 阶段 B：接入真实模型
@@ -1267,7 +1267,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-.env.example real provider placeholders
+larger seed document set and retrieval eval coverage
 ```
 
 原因：
@@ -1279,7 +1279,8 @@ OPENAI_API_KEY
 - OpenAI generator 已可纳入 eval runner。
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
-- GitHub Actions 远端运行状态已确认，下一步可以补 `.env.example` 中真实 provider 的占位配置，让本地 fake 模式和真实 OpenAI 模式的切换路径更清楚。
+- `.env.example` 已补充真实 OpenAI provider 的本地注释 preset，配置切换路径更清楚。
+- 当前仅有小型 seed 文档和 6 条 eval case，下一步应扩充文档集和检索评测覆盖，避免后续 provider/前端改动只在过小样本上通过。
 
 启用 OpenAI embedding 后可以先跑：
 
