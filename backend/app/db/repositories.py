@@ -72,6 +72,17 @@ class CreateWorkspaceInput:
 
 
 @dataclass(frozen=True)
+class UpdateWorkspaceInput:
+    id: str
+    name: str | None = None
+    description: str | None = None
+    metadata: dict[str, Any] | None = None
+    update_name: bool = False
+    update_description: bool = False
+    update_metadata: bool = False
+
+
+@dataclass(frozen=True)
 class CreateWorkspaceResult:
     workspace: Workspace
     created: bool
@@ -205,6 +216,34 @@ class WorkspaceRepository:
 
         statement = select(Workspace).where(Workspace.id == workspace_id)
         return await self.session.scalar(statement)
+
+    async def update_workspace(
+        self,
+        workspace_input: UpdateWorkspaceInput,
+        *,
+        commit: bool = False,
+    ) -> Workspace | None:
+        workspace_id = workspace_input.id.strip()
+        if not workspace_id:
+            raise ValueError("workspace id must not be blank")
+
+        workspace = await self.get_workspace(workspace_id=workspace_id)
+        if workspace is None:
+            return None
+
+        if workspace_input.update_name:
+            workspace.name = normalize_optional_text(workspace_input.name)
+        if workspace_input.update_description:
+            workspace.description = normalize_optional_text(
+                workspace_input.description
+            )
+        if workspace_input.update_metadata:
+            workspace.metadata_ = dict(workspace_input.metadata or {})
+
+        await self.session.flush()
+        if commit:
+            await self.session.commit()
+        return workspace
 
 
 class DocumentRepository:

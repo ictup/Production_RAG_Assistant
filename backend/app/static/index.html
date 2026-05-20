@@ -250,6 +250,46 @@
               </label>
               <button id="create-admin-workspace" type="submit">Create</button>
             </form>
+            <form id="admin-workspace-edit-form" class="admin-edit-form">
+              <label>
+                Editing workspace
+                <input
+                  id="admin-edit-workspace-id"
+                  name="admin-edit-workspace-id"
+                  type="text"
+                  readonly
+                />
+              </label>
+              <label>
+                Name
+                <input
+                  id="admin-edit-workspace-name"
+                  name="admin-edit-workspace-name"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Optional name"
+                />
+              </label>
+              <label>
+                Description
+                <textarea
+                  id="admin-edit-workspace-description"
+                  name="admin-edit-workspace-description"
+                  rows="3"
+                  placeholder="Optional description"
+                ></textarea>
+              </label>
+              <label>
+                Metadata JSON
+                <textarea
+                  id="admin-edit-workspace-metadata"
+                  name="admin-edit-workspace-metadata"
+                  rows="5"
+                  placeholder='{"tier":"internal"}'
+                ></textarea>
+              </label>
+              <button id="save-admin-workspace" type="submit">Save</button>
+            </form>
             <div
               id="admin-workspace-list"
               class="admin-list"

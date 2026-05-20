@@ -30,6 +30,20 @@ class CreateWorkspaceRequest(BaseModel):
         return value or None
 
 
+class UpdateWorkspaceRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=256)
+    description: str | None = Field(default=None, max_length=2048)
+    metadata: dict[str, Any] | None = None
+
+    @field_validator("name", "description")
+    @classmethod
+    def optional_text_must_be_trimmed(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
 class WorkspaceItem(BaseModel):
     id: str
     name: str | None

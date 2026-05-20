@@ -8,6 +8,7 @@ from backend.app.db.models import Workspace
 from backend.app.db.repositories import (
     CreateWorkspaceInput,
     CreateWorkspaceResult,
+    UpdateWorkspaceInput,
     WorkspaceListResult,
 )
 from backend.app.main import create_app
@@ -33,6 +34,7 @@ class FakeWorkspaceRepository:
         )
         self.detail_workspace = detail_workspace
         self.create_calls: list[tuple[CreateWorkspaceInput, bool]] = []
+        self.update_calls: list[tuple[UpdateWorkspaceInput, bool]] = []
         self.list_calls: list[tuple[frozenset[str] | None, int, int]] = []
         self.detail_calls: list[str] = []
 
@@ -57,6 +59,23 @@ class FakeWorkspaceRepository:
 
     async def get_workspace(self, *, workspace_id: str) -> Workspace | None:
         self.detail_calls.append(workspace_id)
+        return self.detail_workspace
+
+    async def update_workspace(
+        self,
+        workspace_input: UpdateWorkspaceInput,
+        *,
+        commit: bool = False,
+    ) -> Workspace | None:
+        self.update_calls.append((workspace_input, commit))
+        if self.detail_workspace is None:
+            return None
+        if workspace_input.update_name:
+            self.detail_workspace.name = workspace_input.name
+        if workspace_input.update_description:
+            self.detail_workspace.description = workspace_input.description
+        if workspace_input.update_metadata:
+            self.detail_workspace.metadata_ = dict(workspace_input.metadata or {})
         return self.detail_workspace
 
 
@@ -234,6 +253,95 @@ def test_get_workspace_route_rejects_forbidden_workspace() -> None:
     assert fake_repository.detail_calls == []
 
 
+def test_update_workspace_route_updates_workspace() -> None:
+    fake_repository = FakeWorkspaceRepository(detail_workspace=make_workspace_model())
+    client = build_client(fake_repository)
+
+    response = client.patch(
+        "/workspaces/tenant-a",
+        headers=AUTH_HEADERS,
+        json={
+            "name": " Updated Tenant ",
+            "description": " Updated description ",
+            "metadata": {"tier": "external"},
+        },
+    )
+
+    assert response.status_code == 200
+    workspace_input, commit = fake_repository.update_calls[0]
+    assert workspace_input.id == "tenant-a"
+    assert workspace_input.name == "Updated Tenant"
+    assert workspace_input.description == "Updated description"
+    assert workspace_input.metadata == {"tier": "external"}
+    assert workspace_input.update_name is True
+    assert workspace_input.update_description is True
+    assert workspace_input.update_metadata is True
+    assert commit is True
+    body = response.json()
+    assert body["workspace"]["name"] == "Updated Tenant"
+    assert body["workspace"]["metadata"] == {"tier": "external"}
+
+
+def test_update_workspace_route_can_clear_optional_fields() -> None:
+    fake_repository = FakeWorkspaceRepository(detail_workspace=make_workspace_model())
+    client = build_client(fake_repository)
+
+    response = client.patch(
+        "/workspaces/tenant-a",
+        headers=AUTH_HEADERS,
+        json={
+            "name": None,
+            "description": None,
+            "metadata": None,
+        },
+    )
+
+    assert response.status_code == 200
+    workspace_input, _ = fake_repository.update_calls[0]
+    assert workspace_input.update_name is True
+    assert workspace_input.update_description is True
+    assert workspace_input.update_metadata is True
+    assert response.json()["workspace"]["name"] is None
+    assert response.json()["workspace"]["description"] is None
+    assert response.json()["workspace"]["metadata"] == {}
+
+
+def test_update_workspace_route_returns_404_for_missing_workspace() -> None:
+    fake_repository = FakeWorkspaceRepository(detail_workspace=None)
+    client = build_client(fake_repository)
+
+    response = client.patch(
+        "/workspaces/tenant-a",
+        headers=AUTH_HEADERS,
+        json={"name": "Updated Tenant"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "workspace not found"}
+    assert fake_repository.update_calls[0][0].id == "tenant-a"
+
+
+def test_update_workspace_route_rejects_forbidden_workspace() -> None:
+    fake_repository = FakeWorkspaceRepository(detail_workspace=make_workspace_model())
+    client = build_client(
+        fake_repository,
+        settings=Settings(
+            api_keys="tenant-key",
+            api_key_workspace_access="tenant-key=tenant-a",
+        ),
+    )
+
+    response = client.patch(
+        "/workspaces/tenant-b",
+        headers={"Authorization": "Bearer tenant-key"},
+        json={"name": "Updated Tenant"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "workspace access denied"}
+    assert fake_repository.update_calls == []
+
+
 def test_workspaces_routes_require_api_key() -> None:
     fake_repository = FakeWorkspaceRepository()
     client = build_client(fake_repository)
@@ -255,3 +363,4 @@ def test_openapi_exposes_workspace_routes() -> None:
     paths = response.json()["paths"]
     assert "/workspaces" in paths
     assert "/workspaces/{workspace_id}" in paths
+    assert "patch" in paths["/workspaces/{workspace_id}"]

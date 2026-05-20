@@ -52,6 +52,14 @@ const els = {
   adminWorkspaceName: document.querySelector("#admin-workspace-name"),
   adminWorkspaceDescription: document.querySelector("#admin-workspace-description"),
   createAdminWorkspace: document.querySelector("#create-admin-workspace"),
+  adminWorkspaceEditForm: document.querySelector("#admin-workspace-edit-form"),
+  adminEditWorkspaceId: document.querySelector("#admin-edit-workspace-id"),
+  adminEditWorkspaceName: document.querySelector("#admin-edit-workspace-name"),
+  adminEditWorkspaceDescription: document.querySelector(
+    "#admin-edit-workspace-description",
+  ),
+  adminEditWorkspaceMetadata: document.querySelector("#admin-edit-workspace-metadata"),
+  saveAdminWorkspace: document.querySelector("#save-admin-workspace"),
   adminFilterForm: document.querySelector("#admin-filter-form"),
   adminRequestId: document.querySelector("#admin-request-id"),
   adminSessionId: document.querySelector("#admin-session-id"),
@@ -137,6 +145,11 @@ function bindEvents() {
   els.adminWorkspaceForm.addEventListener("submit", (event) => {
     event.preventDefault();
     void createWorkspaceFromAdmin();
+  });
+
+  els.adminWorkspaceEditForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void updateWorkspaceFromAdmin();
   });
 
   els.adminFilterForm.addEventListener("submit", (event) => {
@@ -307,6 +320,51 @@ async function createWorkspaceFromAdmin() {
   }
 }
 
+async function updateWorkspaceFromAdmin() {
+  const workspaceId = els.adminEditWorkspaceId.value.trim() || state.workspaceId;
+  if (!workspaceId) {
+    setAdminError("workspace id is required");
+    return;
+  }
+
+  let metadata = {};
+  try {
+    metadata = parseMetadataJson(els.adminEditWorkspaceMetadata.value);
+  } catch (error) {
+    setAdminError(error.message);
+    return;
+  }
+
+  els.saveAdminWorkspace.disabled = true;
+  setAdminStatus("Saving workspace");
+  try {
+    const response = await apiFetch(`/workspaces/${encodeURIComponent(workspaceId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        name: optionalText(els.adminEditWorkspaceName.value),
+        description: optionalText(els.adminEditWorkspaceDescription.value),
+        metadata,
+      }),
+    });
+    const body = await response.json();
+    replaceAdminWorkspace(body.workspace);
+    syncWorkspaceEditForm();
+    renderAdminWorkspaces();
+    setAdminStatus(`Updated workspace ${body.workspace.id}`);
+  } catch (error) {
+    setAdminError(error.message);
+  } finally {
+    els.saveAdminWorkspace.disabled = false;
+  }
+}
+
+function replaceAdminWorkspace(workspace) {
+  state.admin.workspaces = [
+    workspace,
+    ...state.admin.workspaces.filter((item) => item.id !== workspace.id),
+  ];
+}
+
 function buildChatLogsUrl() {
   const params = buildChatLogParams({
     limit: state.admin.logLimit,
@@ -367,9 +425,34 @@ function clearAdminFilters() {
   els.adminRefusalOnly.checked = false;
 }
 
+function syncWorkspaceEditForm() {
+  const workspace =
+    state.admin.workspaces.find((item) => item.id === state.workspaceId) || null;
+  els.adminEditWorkspaceId.value = state.workspaceId || "public";
+  els.adminEditWorkspaceName.value = workspace?.name || "";
+  els.adminEditWorkspaceDescription.value = workspace?.description || "";
+  els.adminEditWorkspaceMetadata.value = formatMetadataJson(workspace?.metadata || {});
+}
+
 function optionalText(value) {
   const text = String(value || "").trim();
   return text || null;
+}
+
+function parseMetadataJson(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return {};
+  }
+  const parsed = JSON.parse(text);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw createAppError("metadata must be a JSON object");
+  }
+  return parsed;
+}
+
+function formatMetadataJson(value) {
+  return JSON.stringify(value || {}, null, 2);
 }
 
 async function exportAdminLogs(format) {
@@ -524,6 +607,7 @@ function renderAdminOverview({ workspaceTotal, logTotal, logLimit, logOffset }) 
   els.adminWorkspaceCount.textContent = String(workspaceTotal);
   els.adminLogCount.textContent = String(logTotal);
   renderAdminWorkspaces();
+  syncWorkspaceEditForm();
   renderAdminLogs();
   renderAdminPagination({
     count: logTotal,
@@ -686,6 +770,7 @@ function selectWorkspace(workspaceId) {
   if (changed) {
     clearSelectedSession();
   }
+  syncWorkspaceEditForm();
   void loadSessions();
   void loadDocuments();
   void loadAdminOverview();

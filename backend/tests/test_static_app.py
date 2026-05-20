@@ -27,6 +27,9 @@ def test_static_app_serves_index_html() -> None:
     assert 'id="admin-workspace-form"' in response.text
     assert 'id="admin-workspace-id"' in response.text
     assert 'id="create-admin-workspace"' in response.text
+    assert 'id="admin-workspace-edit-form"' in response.text
+    assert 'id="admin-edit-workspace-metadata"' in response.text
+    assert 'id="save-admin-workspace"' in response.text
     assert 'id="admin-filter-form"' in response.text
     assert 'id="admin-request-id"' in response.text
     assert 'id="export-admin-jsonl"' in response.text
@@ -48,6 +51,9 @@ def test_static_app_serves_assets() -> None:
     assert "reindexDocuments" in script_response.text
     assert "loadAdminOverview" in script_response.text
     assert "createWorkspaceFromAdmin" in script_response.text
+    assert "updateWorkspaceFromAdmin" in script_response.text
+    assert "parseMetadataJson" in script_response.text
+    assert "syncWorkspaceEditForm" in script_response.text
     assert "optionalText" in script_response.text
     assert "buildChatLogsUrl" in script_response.text
     assert "buildChatLogsExportUrl" in script_response.text
@@ -69,6 +75,7 @@ def test_static_app_serves_assets() -> None:
     assert ".knowledge-panel" in style_response.text
     assert ".admin-panel" in style_response.text
     assert ".admin-create-form" in style_response.text
+    assert ".admin-edit-form" in style_response.text
     assert ".admin-filter-form" in style_response.text
     assert ".admin-export-actions" in style_response.text
     assert ".admin-pagination" in style_response.text

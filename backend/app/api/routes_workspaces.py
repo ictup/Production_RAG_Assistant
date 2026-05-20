@@ -4,10 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
 from backend.app.api.workspace_validation import get_workspace_repository
-from backend.app.db.repositories import CreateWorkspaceInput, WorkspaceRepository
+from backend.app.db.repositories import (
+    CreateWorkspaceInput,
+    UpdateWorkspaceInput,
+    WorkspaceRepository,
+)
 from backend.app.schemas.workspaces import (
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
+    UpdateWorkspaceRequest,
     WorkspaceResponse,
     WorkspacesResponse,
 )
@@ -74,3 +79,31 @@ async def get_workspace(
             detail="workspace not found",
         )
     return WorkspaceResponse.from_model(workspace)
+
+
+@router.patch("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
+async def update_workspace(
+    workspace_id: str,
+    request: UpdateWorkspaceRequest,
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
+    repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
+) -> WorkspaceResponse:
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
+    updated_workspace = await repository.update_workspace(
+        UpdateWorkspaceInput(
+            id=normalized_workspace_id,
+            name=request.name,
+            description=request.description,
+            metadata=request.metadata,
+            update_name="name" in request.model_fields_set,
+            update_description="description" in request.model_fields_set,
+            update_metadata="metadata" in request.model_fields_set,
+        ),
+        commit=True,
+    )
+    if updated_workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="workspace not found",
+        )
+    return WorkspaceResponse.from_model(updated_workspace)

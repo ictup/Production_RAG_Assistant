@@ -18,6 +18,7 @@ from backend.app.db.repositories import (
     CreateChatSessionInput,
     CreateWorkspaceInput,
     DocumentRepository,
+    UpdateWorkspaceInput,
     WorkspaceRepository,
 )
 from ingestion.chunking import chunk_document
@@ -301,6 +302,56 @@ async def test_get_workspace_queries_by_trimmed_id() -> None:
     assert result == workspace
     assert session.scalar_statement is not None
     assert "workspaces.id" in str(session.scalar_statement)
+
+
+@pytest.mark.asyncio
+async def test_update_workspace_updates_requested_fields() -> None:
+    workspace = make_workspace_model()
+    session = FakeAsyncSession(scalar_result=workspace)
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.update_workspace(
+        UpdateWorkspaceInput(
+            id=" tenant-a ",
+            name=" Updated Tenant ",
+            description=" Updated description ",
+            metadata={"tier": "external"},
+            update_name=True,
+            update_description=True,
+            update_metadata=True,
+        ),
+        commit=True,
+    )
+
+    assert result == workspace
+    assert workspace.name == "Updated Tenant"
+    assert workspace.description == "Updated description"
+    assert workspace.metadata_ == {"tier": "external"}
+    assert session.flushed is True
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_update_workspace_returns_none_for_missing_workspace() -> None:
+    session = FakeAsyncSession(scalar_result=None)
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.update_workspace(
+        UpdateWorkspaceInput(id="tenant-a", name="Updated", update_name=True)
+    )
+
+    assert result is None
+    assert session.flushed is False
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_update_workspace_rejects_blank_id() -> None:
+    session = FakeAsyncSession()
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="workspace id"):
+        await repository.update_workspace(UpdateWorkspaceInput(id="   "))
 
 
 @pytest.mark.asyncio
