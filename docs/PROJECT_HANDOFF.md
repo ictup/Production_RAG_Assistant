@@ -127,6 +127,7 @@ docs/EVAL_TRENDS.md
 - OpenAI embedding client
 - vector retrieval
 - sparse retrieval
+- metadata filter for vector/sparse retrieval
 - reciprocal rank fusion
 - no-op reranker
 - OpenAI Responses API listwise reranker
@@ -536,6 +537,16 @@ curl.exe -X POST http://127.0.0.1:8000/chat `
 - `citation_valid`
 - `request_id`
 - `session_id`
+
+可以在 `/chat` 和 `/chat/stream` 请求体里传 `metadata_filter`，按 chunk metadata 做 JSONB exact-containment 过滤。文档上传时传入的 metadata 会复制到 chunks，因此常见用法是按 `topic`、`difficulty`、`source_family` 等字段缩小检索候选：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/chat `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -H "X-Workspace-ID: public" `
+  -d "{\"question\":\"What problem does FlashAttention solve?\",\"metadata_filter\":{\"topic\":\"attention\"}}"
+```
 
 如果要把本次问答挂到某个 chat session，先创建 session，再把返回的 `session.id` 放到 `/chat` 请求体：
 
@@ -953,8 +964,9 @@ flowchart TD
     C --> D["Embeddings stored in pgvector"]
     E["POST /chat"] --> F["API key and workspace"]
     F --> G["Question-level refusal guard"]
-    G --> H["Vector retrieval"]
-    G --> I["Sparse retrieval"]
+    G --> MF["Optional metadata_filter"]
+    MF --> H["Vector retrieval"]
+    MF --> I["Sparse retrieval"]
     H --> J["RRF fusion"]
     I --> J
     J --> K["Retrieval confidence refusal"]
@@ -1053,13 +1065,13 @@ Repository -> Settings -> Actions -> General
 - provider token 统计和 embedding/generation latency 细分指标。
 - OpenAI Responses API streaming 已接入 generator 和 `/chat/stream`。
 - OpenAI Responses API listwise reranker 已完成，默认仍为 no-op，可用 `RERANKER_PROVIDER=openai` 启用。
+- metadata filter 基础版已接入 `/chat` 和 `/chat/stream`，会应用到 vector/sparse retrieval 的 `document_chunks.metadata @>` 条件。
 - provider generation token 成本估算基础版已完成：`PROVIDER_PRICE_TABLE`、响应 usage cost 字段、Prometheus `rag_provider_cost_usd_total`。
 - embedding token 成本估算尚未实现，因为当前 embedding provider 还没有返回 embedding token usage。
 
 ### 检索质量
 
 - 更大的文档集合。
-- 更完整的 metadata filter。
 - 更强的 query rewrite。
 - 多轮对话里的 query contextualization。
 
@@ -1195,7 +1207,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-metadata filter
+query rewrite
 ```
 
 原因：
@@ -1208,7 +1220,7 @@ metadata filter
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- OpenAI Responses API listwise reranker 已完成，下一步补 metadata filter，可以让检索按文档 metadata、workspace 内分类或上传属性进一步收窄候选集。
+- metadata filter 基础版已完成，下一步补 query rewrite，可以把用户口语化问题先规范成更适合 hybrid retrieval 的查询。
 
 启用 OpenAI embedding 后可以先跑：
 

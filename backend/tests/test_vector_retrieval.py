@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from backend.app.db.models import EMBEDDING_DIMENSION
 from backend.app.rag.embeddings import EmbeddingDimensionError
@@ -49,6 +50,19 @@ def test_vector_statement_filters_workspace_and_orders_distance() -> None:
     assert "document_chunks.embedding IS NOT NULL" in compiled
     assert "document_chunks.embedding <=>" in compiled
     assert "ORDER BY document_chunks.embedding <=>" in compiled
+
+
+def test_vector_statement_applies_metadata_filter() -> None:
+    statement = build_vector_retrieval_statement(
+        make_query_embedding(),
+        top_k=5,
+        workspace_id="public",
+        metadata_filter={"topic": "attention"},
+    )
+    compiled = str(statement.compile(dialect=postgresql.dialect()))
+
+    assert "document_chunks.metadata" in compiled
+    assert "@>" in compiled
 
 
 def test_build_vector_retrieval_statement_rejects_invalid_top_k() -> None:

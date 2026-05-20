@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.dialects import postgresql
 
 from backend.app.core.config import Settings
 from backend.app.core.tracing import TRACE_LOGGER_NAME, trace_context
@@ -119,6 +120,43 @@ async def test_pipeline_answers_with_sources_and_valid_citations() -> None:
     assert response.usage.generation_latency_ms >= 0
     assert response.sources[0].chunk_id == str(chunk_id)
     assert len(session.statements) == 2
+
+
+@pytest.mark.asyncio
+async def test_pipeline_passes_metadata_filter_to_retrievers() -> None:
+    chunk_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    session = FakeAsyncSession(
+        [
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+        ]
+    )
+    pipeline = RagPipeline(
+        session=session,  # type: ignore[arg-type]
+        settings=make_settings(),
+        embedding_client=FakeEmbeddingClient(
+            dimension=1536,
+            model_name="test-fake-embedding",
+        ),
+        reranker=NoOpReranker(),
+        generator=FakeGenerator(model_name="test-fake-llm"),
+    )
+
+    response = await pipeline.answer_question(
+        ChatPipelineRequest(
+            question="What problem does FlashAttention solve?",
+            metadata_filter={"topic": "attention"},
+        )
+    )
+
+    assert response.retrieval.metadata_filter == {"topic": "attention"}
+    assert len(session.statements) == 2
+    compiled_statements = [
+        str(statement.compile(dialect=postgresql.dialect()))
+        for statement in session.statements
+    ]
+    assert all("@>" in statement for statement in compiled_statements)
 
 
 @pytest.mark.asyncio
@@ -342,12 +380,22 @@ def test_pipeline_request_trims_question_and_workspace() -> None:
     request = ChatPipelineRequest(
         question="  What is RAG?  ",
         workspace_id="  public  ",
+        metadata_filter={" topic ": "attention"},
     )
 
     assert request.question == "What is RAG?"
     assert request.workspace_id == "public"
+    assert request.metadata_filter == {"topic": "attention"}
 
 
 def test_pipeline_request_rejects_blank_question() -> None:
     with pytest.raises(ValidationError, match="value must not be blank"):
         ChatPipelineRequest(question="   ")
+
+
+def test_pipeline_request_rejects_invalid_metadata_filter() -> None:
+    with pytest.raises(ValidationError, match="metadata_filter"):
+        ChatPipelineRequest(
+            question="What is RAG?",
+            metadata_filter={"  ": "attention"},
+        )

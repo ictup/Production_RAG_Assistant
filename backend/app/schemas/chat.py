@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend.app.db.models import ChatLog
 from backend.app.rag.citations import Source
+from backend.app.rag.metadata_filters import normalize_metadata_filter
 from backend.app.rag.pipeline import (
     ChatPipelineRequest,
     ChatPipelineResponse,
@@ -18,6 +19,7 @@ from backend.app.rag.refusal import RefusalInfo
 class ChatRequest(BaseModel):
     question: str
     session_id: uuid.UUID | None = None
+    metadata_filter: dict[str, Any] = Field(default_factory=dict)
     vector_top_k: int | None = Field(default=None, gt=0)
     sparse_top_k: int | None = Field(default=None, gt=0)
     fused_top_k: int | None = Field(default=None, gt=0)
@@ -32,10 +34,20 @@ class ChatRequest(BaseModel):
             raise ValueError("question must not be blank")
         return value
 
+    @field_validator("metadata_filter", mode="before")
+    @classmethod
+    def metadata_filter_must_be_object(cls, value: object) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("metadata_filter must be an object")
+        return normalize_metadata_filter(value)
+
     def to_pipeline_request(self, *, workspace_id: str) -> ChatPipelineRequest:
         return ChatPipelineRequest(
             question=self.question,
             workspace_id=workspace_id,
+            metadata_filter=self.metadata_filter,
             vector_top_k=self.vector_top_k,
             sparse_top_k=self.sparse_top_k,
             fused_top_k=self.fused_top_k,

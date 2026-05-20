@@ -63,6 +63,7 @@ class FakePipeline:
                 fused_count=1,
                 used_count=1,
                 top_score=0.42,
+                metadata_filter=request.metadata_filter,
             ),
             usage=self.usage
             or UsageInfo(
@@ -265,6 +266,7 @@ def test_chat_route_returns_answer_sources_and_metadata() -> None:
             "fused_top_k": 5,
             "rerank_top_n": 2,
             "rerank": False,
+            "metadata_filter": {" topic ": "attention"},
         },
     )
 
@@ -287,6 +289,8 @@ def test_chat_route_returns_answer_sources_and_metadata() -> None:
     assert pipeline_request.fused_top_k == 5
     assert pipeline_request.rerank_top_n == 2
     assert pipeline_request.rerank is False
+    assert pipeline_request.metadata_filter == {"topic": "attention"}
+    assert body["retrieval"]["metadata_filter"] == {"topic": "attention"}
 
     assert len(fake_chat_log_repository.inputs) == 1
     assert fake_chat_log_repository.commit_flags == [True]
@@ -508,6 +512,25 @@ def test_chat_route_rejects_blank_question() -> None:
         "/chat",
         headers=AUTH_HEADERS,
         json={"question": "   "},
+    )
+
+    assert response.status_code == 422
+    assert fake_pipeline.requests == []
+    assert fake_chat_log_repository.inputs == []
+
+
+def test_chat_route_rejects_invalid_metadata_filter() -> None:
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_pipeline, fake_chat_log_repository)
+
+    response = client.post(
+        "/chat",
+        headers=AUTH_HEADERS,
+        json={
+            "question": "What is FlashAttention?",
+            "metadata_filter": {"  ": "attention"},
+        },
     )
 
     assert response.status_code == 422

@@ -12,6 +12,7 @@ from backend.app.rag.costs import estimate_provider_token_cost
 from backend.app.rag.embeddings import EmbeddingClient, build_embedding_client
 from backend.app.rag.fusion import reciprocal_rank_fusion
 from backend.app.rag.generation import Generator, build_generator
+from backend.app.rag.metadata_filters import normalize_metadata_filter
 from backend.app.rag.prompts import build_rag_prompt
 from backend.app.rag.refusal import (
     REFUSAL_ANSWER,
@@ -27,6 +28,7 @@ from backend.app.rag.vector_retrieval import VectorRetriever
 class ChatPipelineRequest(BaseModel):
     question: str
     workspace_id: str = "public"
+    metadata_filter: dict[str, object] = Field(default_factory=dict)
     vector_top_k: int | None = Field(default=None, gt=0)
     sparse_top_k: int | None = Field(default=None, gt=0)
     fused_top_k: int | None = Field(default=None, gt=0)
@@ -41,6 +43,15 @@ class ChatPipelineRequest(BaseModel):
             raise ValueError("value must not be blank")
         return value
 
+    @field_validator("metadata_filter", mode="before")
+    @classmethod
+    def metadata_filter_must_be_object(cls, value: object) -> dict[str, object]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("metadata_filter must be an object")
+        return normalize_metadata_filter(value)
+
 
 class RetrievalInfo(BaseModel):
     mode: str
@@ -49,6 +60,7 @@ class RetrievalInfo(BaseModel):
     fused_count: int
     used_count: int
     top_score: float | None
+    metadata_filter: dict[str, object] = Field(default_factory=dict)
 
 
 class UsageInfo(BaseModel):
@@ -111,6 +123,7 @@ class RagPipeline:
         sparse_top_k = request.sparse_top_k or self.settings.sparse_top_k
         fused_top_k = request.fused_top_k or self.settings.fused_top_k
         rerank_top_n = request.rerank_top_n or self.settings.rerank_top_n
+        metadata_filter = request.metadata_filter
 
         with trace_span(
             "rag.question_guard",
@@ -125,6 +138,7 @@ class RagPipeline:
                 sparse_top_k=sparse_top_k,
                 fused_count=0,
                 top_score=None,
+                metadata_filter=metadata_filter,
                 model=self.generator.model_name,
                 generator_provider=self.generator.provider_name,
                 embedding_model=self.embedding_client.model_name,
@@ -151,24 +165,28 @@ class RagPipeline:
             {
                 "workspace_id": request.workspace_id,
                 "top_k": vector_top_k,
+                "metadata_filter_keys": sorted(metadata_filter),
             },
         ):
             vector_results = await VectorRetriever(self.session).retrieve(
                 query_embedding=query_embedding,
                 top_k=vector_top_k,
                 workspace_id=request.workspace_id,
+                metadata_filter=metadata_filter,
             )
         with trace_span(
             "rag.sparse_retrieval",
             {
                 "workspace_id": request.workspace_id,
                 "top_k": sparse_top_k,
+                "metadata_filter_keys": sorted(metadata_filter),
             },
         ):
             sparse_results = await SparseRetriever(self.session).retrieve(
                 query=request.question,
                 top_k=sparse_top_k,
                 workspace_id=request.workspace_id,
+                metadata_filter=metadata_filter,
             )
         with trace_span(
             "rag.fusion",
@@ -203,6 +221,7 @@ class RagPipeline:
                 sparse_top_k=sparse_top_k,
                 fused_count=len(fused_results),
                 top_score=refusal.top_score,
+                metadata_filter=metadata_filter,
                 model=self.generator.model_name,
                 generator_provider=self.generator.provider_name,
                 embedding_model=self.embedding_client.model_name,
@@ -262,6 +281,7 @@ class RagPipeline:
                 fused_count=len(fused_results),
                 used_count=len(used_chunks),
                 top_score=fused_results[0].score if fused_results else None,
+                metadata_filter=metadata_filter,
             ),
             usage=build_usage_info(
                 model=generated.model,
@@ -288,6 +308,7 @@ class RagPipeline:
         sparse_top_k = request.sparse_top_k or self.settings.sparse_top_k
         fused_top_k = request.fused_top_k or self.settings.fused_top_k
         rerank_top_n = request.rerank_top_n or self.settings.rerank_top_n
+        metadata_filter = request.metadata_filter
 
         with trace_span(
             "rag.question_guard",
@@ -302,6 +323,7 @@ class RagPipeline:
                 sparse_top_k=sparse_top_k,
                 fused_count=0,
                 top_score=None,
+                metadata_filter=metadata_filter,
                 model=self.generator.model_name,
                 generator_provider=self.generator.provider_name,
                 embedding_model=self.embedding_client.model_name,
@@ -331,24 +353,28 @@ class RagPipeline:
             {
                 "workspace_id": request.workspace_id,
                 "top_k": vector_top_k,
+                "metadata_filter_keys": sorted(metadata_filter),
             },
         ):
             vector_results = await VectorRetriever(self.session).retrieve(
                 query_embedding=query_embedding,
                 top_k=vector_top_k,
                 workspace_id=request.workspace_id,
+                metadata_filter=metadata_filter,
             )
         with trace_span(
             "rag.sparse_retrieval",
             {
                 "workspace_id": request.workspace_id,
                 "top_k": sparse_top_k,
+                "metadata_filter_keys": sorted(metadata_filter),
             },
         ):
             sparse_results = await SparseRetriever(self.session).retrieve(
                 query=request.question,
                 top_k=sparse_top_k,
                 workspace_id=request.workspace_id,
+                metadata_filter=metadata_filter,
             )
         with trace_span(
             "rag.fusion",
@@ -383,6 +409,7 @@ class RagPipeline:
                 sparse_top_k=sparse_top_k,
                 fused_count=len(fused_results),
                 top_score=refusal.top_score,
+                metadata_filter=metadata_filter,
                 model=self.generator.model_name,
                 generator_provider=self.generator.provider_name,
                 embedding_model=self.embedding_client.model_name,
@@ -466,6 +493,7 @@ class RagPipeline:
                 fused_count=len(fused_results),
                 used_count=len(used_chunks),
                 top_score=fused_results[0].score if fused_results else None,
+                metadata_filter=metadata_filter,
             ),
             usage=build_usage_info(
                 model=generated_model,
@@ -493,6 +521,7 @@ def build_retrieval_info(
     fused_count: int,
     used_count: int,
     top_score: float | None,
+    metadata_filter: dict[str, object] | None = None,
 ) -> RetrievalInfo:
     return RetrievalInfo(
         mode=mode,
@@ -501,6 +530,7 @@ def build_retrieval_info(
         fused_count=fused_count,
         used_count=used_count,
         top_score=top_score,
+        metadata_filter=dict(metadata_filter or {}),
     )
 
 
@@ -512,6 +542,7 @@ def build_refusal_response(
     sparse_top_k: int,
     fused_count: int,
     top_score: float | None,
+    metadata_filter: dict[str, object] | None = None,
     model: str,
     embedding_model: str,
     generator_provider: str = "unknown",
@@ -530,6 +561,7 @@ def build_refusal_response(
             fused_count=fused_count,
             used_count=0,
             top_score=top_score,
+            metadata_filter=metadata_filter,
         ),
         usage=build_usage_info(
             model=model,

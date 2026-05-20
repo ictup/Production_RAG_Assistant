@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models import EMBEDDING_DIMENSION, Document, DocumentChunk
 from backend.app.rag.embeddings import validate_embedding_dimension
+from backend.app.rag.metadata_filters import normalize_metadata_filter
 from backend.app.rag.retrieval_models import RetrievedChunk
 
 
@@ -14,6 +15,7 @@ def build_vector_retrieval_statement(
     *,
     top_k: int,
     workspace_id: str,
+    metadata_filter: dict[str, Any] | None = None,
 ) -> Select[Any]:
     if top_k <= 0:
         raise ValueError("top_k must be greater than zero")
@@ -24,10 +26,11 @@ def build_vector_retrieval_statement(
         label="query_embedding",
     )
 
+    normalized_metadata_filter = normalize_metadata_filter(metadata_filter)
     distance = DocumentChunk.embedding.cosine_distance(list(query_embedding))
     score = (1 - distance).label("score")
 
-    return (
+    statement = (
         select(
             DocumentChunk.id.label("chunk_id"),
             DocumentChunk.document_id.label("document_id"),
@@ -44,6 +47,11 @@ def build_vector_retrieval_statement(
         .order_by(distance)
         .limit(top_k)
     )
+    if normalized_metadata_filter:
+        statement = statement.where(
+            DocumentChunk.metadata_.contains(normalized_metadata_filter)
+        )
+    return statement
 
 
 class VectorRetriever:
@@ -56,11 +64,13 @@ class VectorRetriever:
         query_embedding: Sequence[float],
         top_k: int,
         workspace_id: str,
+        metadata_filter: dict[str, Any] | None = None,
     ) -> list[RetrievedChunk]:
         statement = build_vector_retrieval_statement(
             query_embedding,
             top_k=top_k,
             workspace_id=workspace_id,
+            metadata_filter=metadata_filter,
         )
         rows = (await self.session.execute(statement)).all()
 
@@ -83,4 +93,3 @@ class VectorRetriever:
             )
 
         return retrieved_chunks
-

@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from backend.app.rag.sparse_retrieval import (
     SparseRetriever,
@@ -46,6 +47,19 @@ def test_sparse_statement_uses_websearch_query_rank_and_workspace_filter() -> No
     assert "ORDER BY score DESC" in compiled
 
 
+def test_sparse_statement_applies_metadata_filter() -> None:
+    statement = build_sparse_retrieval_statement(
+        "KV cache",
+        top_k=5,
+        workspace_id="public",
+        metadata_filter={"topic": "inference"},
+    )
+    compiled = str(statement.compile(dialect=postgresql.dialect()))
+
+    assert "document_chunks.metadata" in compiled
+    assert "@>" in compiled
+
+
 def test_sparse_statement_rejects_blank_query() -> None:
     with pytest.raises(ValueError, match="query must not be blank"):
         build_sparse_retrieval_statement("   ", top_k=5, workspace_id="public")
@@ -89,4 +103,3 @@ async def test_sparse_retriever_maps_rows_to_retrieved_chunks() -> None:
     assert results[0].retrieval_mode == "sparse"
     assert results[0].metadata == {"topic": "inference"}
     assert session.statement is not None
-

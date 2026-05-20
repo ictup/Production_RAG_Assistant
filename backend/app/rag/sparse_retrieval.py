@@ -4,6 +4,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models import Document, DocumentChunk
+from backend.app.rag.metadata_filters import normalize_metadata_filter
 from backend.app.rag.retrieval_models import RetrievedChunk
 
 
@@ -12,6 +13,7 @@ def build_sparse_retrieval_statement(
     *,
     top_k: int,
     workspace_id: str,
+    metadata_filter: dict[str, Any] | None = None,
 ) -> Select[Any]:
     query = query.strip()
     if not query:
@@ -19,10 +21,11 @@ def build_sparse_retrieval_statement(
     if top_k <= 0:
         raise ValueError("top_k must be greater than zero")
 
+    normalized_metadata_filter = normalize_metadata_filter(metadata_filter)
     ts_query = func.websearch_to_tsquery("english", query)
     score = func.ts_rank_cd(DocumentChunk.search_vector, ts_query).label("score")
 
-    return (
+    statement = (
         select(
             DocumentChunk.id.label("chunk_id"),
             DocumentChunk.document_id.label("document_id"),
@@ -39,6 +42,11 @@ def build_sparse_retrieval_statement(
         .order_by(score.desc())
         .limit(top_k)
     )
+    if normalized_metadata_filter:
+        statement = statement.where(
+            DocumentChunk.metadata_.contains(normalized_metadata_filter)
+        )
+    return statement
 
 
 class SparseRetriever:
@@ -51,11 +59,13 @@ class SparseRetriever:
         query: str,
         top_k: int,
         workspace_id: str,
+        metadata_filter: dict[str, Any] | None = None,
     ) -> list[RetrievedChunk]:
         statement = build_sparse_retrieval_statement(
             query,
             top_k=top_k,
             workspace_id=workspace_id,
+            metadata_filter=metadata_filter,
         )
         rows = (await self.session.execute(statement)).all()
 
@@ -78,4 +88,3 @@ class SparseRetriever:
             )
 
         return retrieved_chunks
-
