@@ -143,6 +143,7 @@ def test_support_triage_route_returns_finalized_skeleton_response() -> None:
     assert body["metrics"]["historical_case_count"] == 0
     assert body["metrics"]["cited_source_count"] == 1
     assert body["metrics"]["cited_case_count"] == 0
+    assert body["metrics"]["node_count"] == 5
     assert [tool_call["tool_name"] for tool_call in body["tool_calls"]] == [
         "classify_ticket_tool",
         "risk_check_tool",
@@ -150,6 +151,14 @@ def test_support_triage_route_returns_finalized_skeleton_response() -> None:
         "ticket_lookup_tool",
         "draft_response_tool",
     ]
+    assert [node_run["node_name"] for node_run in body["node_runs"]] == [
+        "classify_ticket",
+        "risk_check",
+        "rag_search",
+        "ticket_lookup",
+        "draft_response",
+    ]
+    assert all(node_run["success"] for node_run in body["node_runs"])
     assert len(fake_pipeline.requests) == 1
     assert fake_pipeline.requests[0].workspace_id == "public"
     assert fake_ticket_repository.calls == [
@@ -195,6 +204,11 @@ def test_support_triage_route_returns_approval_required_for_high_risk_ticket() -
     assert body["historical_cases"] == []
     assert body["cited_source_ids"] == []
     assert body["cited_case_ids"] == []
+    assert body["metrics"]["node_count"] == 2
+    assert [node_run["node_name"] for node_run in body["node_runs"]] == [
+        "classify_ticket",
+        "risk_check",
+    ]
     assert fake_pipeline.requests == []
     assert fake_ticket_repository.calls == []
 

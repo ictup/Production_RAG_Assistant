@@ -128,6 +128,8 @@ docs/agentic_rag_extension.md
 - Prometheus 指标接口：`GET /metrics`
 - Agentic RAG support triage 接口：`POST /agent/support-triage`，
   当前低风险路径会执行分类、风险检查、RAG 检索、历史工单检索和确定性带引用回复草稿生成
+- Agentic RAG 内部编排：当前通过无 LangGraph 依赖的 `AgentGraphRunner`
+  顺序执行节点，并在响应中返回 `node_runs` 节点级执行记录
 - API key 鉴权：`Authorization: Bearer dev-key`
 - workspace 隔离头：`X-Workspace-ID`
 - API key workspace 访问控制：`API_KEY_WORKSPACE_ACCESS`
@@ -987,7 +989,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-648 passed
+652 passed
 ```
 
 ### Pipeline Smoke

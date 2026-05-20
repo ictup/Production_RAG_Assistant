@@ -91,6 +91,7 @@ async def test_support_triage_skeleton_finalizes_safe_ticket() -> None:
     assert response.metrics["historical_case_count"] == 0
     assert response.metrics["cited_source_count"] == 1
     assert response.metrics["cited_case_count"] == 0
+    assert response.metrics["node_count"] == 5
     assert [tool_call["tool_name"] for tool_call in response.tool_calls] == [
         "classify_ticket_tool",
         "risk_check_tool",
@@ -98,6 +99,14 @@ async def test_support_triage_skeleton_finalizes_safe_ticket() -> None:
         "ticket_lookup_tool",
         "draft_response_tool",
     ]
+    assert [node_run["node_name"] for node_run in response.node_runs] == [
+        "classify_ticket",
+        "risk_check",
+        "rag_search",
+        "ticket_lookup",
+        "draft_response",
+    ]
+    assert all(node_run["success"] for node_run in response.node_runs)
     assert len(fake_pipeline.requests) == 1
     assert fake_pipeline.requests[0].workspace_id == "public"
     assert fake_pipeline.requests[0].rerank_top_n == 5
@@ -137,5 +146,10 @@ async def test_support_triage_skeleton_routes_high_risk_ticket_to_approval() -> 
     assert "customer prompt" in response.reason
     assert response.sources == []
     assert response.retrieval == {}
+    assert response.metrics["node_count"] == 2
+    assert [node_run["node_name"] for node_run in response.node_runs] == [
+        "classify_ticket",
+        "risk_check",
+    ]
     assert fake_pipeline.requests == []
     assert fake_ticket_repository.calls == []

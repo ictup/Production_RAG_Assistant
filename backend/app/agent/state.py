@@ -36,6 +36,7 @@ class AgentState(TypedDict):
     final_answer: str | None
     final_action: FinalAction | None
     tool_calls: list[dict[str, Any]]
+    node_runs: list[dict[str, Any]]
     errors: list[dict[str, Any]]
     metrics: dict[str, Any]
 
@@ -71,6 +72,7 @@ def build_initial_agent_state(
         final_answer=None,
         final_action=None,
         tool_calls=[],
+        node_runs=[],
         errors=[],
         metrics={},
     )

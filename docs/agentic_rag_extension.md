@@ -80,11 +80,10 @@ migration advice, and latency troubleshooting.
 
 ## Planned Next Steps
 
-1. Add the graph runner abstraction, initially without LangGraph.
-2. Add `agent_approvals` database table.
-3. Add approval API endpoints.
-4. Add agent-specific Prometheus metrics.
-5. Add 30 support eval cases and an agent eval report.
+1. Add `agent_approvals` database table.
+2. Add approval API endpoints.
+3. Add agent-specific Prometheus metrics.
+4. Add 30 support eval cases and an agent eval report.
 
 ## Step 2 Scope
 
@@ -140,3 +139,21 @@ cited historical case IDs, and a citation validation boolean. The low-risk
 agent path now calls `draft_response_tool` after `ticket_lookup_tool`, returns
 the draft as the finalized response, and records citation metrics. This step
 does not call an external LLM and does not create approval records yet.
+
+## Step 6 Scope
+
+The sixth implementation step adds a graph runner abstraction without adding
+LangGraph as a runtime dependency:
+
+```text
+AgentGraphRunner
+AgentGraphNode
+AgentNodeRunRecord
+```
+
+The support triage API still follows the same behavior, but the internal
+workflow is now executed as named nodes: `classify_ticket`, `risk_check`,
+`rag_search`, `ticket_lookup`, and `draft_response`. High-risk requests stop
+after `risk_check`. Responses now include `node_runs`, and metrics include
+`node_count`, making the workflow easier to observe and replace with a real
+graph engine later.

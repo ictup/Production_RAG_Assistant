@@ -49,6 +49,7 @@ def test_agent_triage_response_defaults_to_empty_collections() -> None:
     assert response.cited_source_ids == []
     assert response.cited_case_ids == []
     assert response.tool_calls == []
+    assert response.node_runs == []
     assert response.metrics == {}
 
 

@@ -56,8 +56,8 @@ validated release gates.
 - Agentic RAG support workflow foundation with support ticket schemas,
   rule-based classification, risk checks, MCP-style tool specs, a
   `rag_search_tool` backed by the existing RAG retriever, SQL-backed
-  `ticket_lookup_tool`, deterministic cited `draft_response_tool`, and a
-  `/agent/support-triage` API skeleton.
+  `ticket_lookup_tool`, deterministic cited `draft_response_tool`, node-level
+  graph runner records, and a `/agent/support-triage` API skeleton.
 - FastAPI API for chat, streaming chat, documents, workspaces, sessions, export
   jobs, health, and metrics.
 - Workspace management API with create, update, list, detail, soft archive,
@@ -203,7 +203,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `648 passed`.
+Current local baseline: `652 passed`.
 
 ## Configuration Model
 

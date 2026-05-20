@@ -69,6 +69,7 @@ class AgentTriageResponse(BaseModel):
     cited_source_ids: list[str] = Field(default_factory=list)
     cited_case_ids: list[str] = Field(default_factory=list)
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    node_runs: list[dict[str, Any]] = Field(default_factory=list)
     metrics: dict[str, Any] = Field(default_factory=dict)
     trace_id: str | None = None
 
