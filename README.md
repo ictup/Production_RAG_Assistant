@@ -11,8 +11,8 @@ real provider key is available.
 
 ## What Is Included
 
-- FastAPI API for chat, streaming chat, documents, workspaces, sessions,
-  health, and metrics.
+- FastAPI API for chat, streaming chat, documents, workspaces, sessions, export
+  jobs, health, and metrics.
 - Workspace management API with create, update, list, detail, soft archive,
   bulk archive, restore, bulk restore operations, and operation audit logging.
 - Postgres + pgvector schema with Alembic migrations, including an export job
@@ -274,11 +274,25 @@ curl.exe "http://127.0.0.1:8000/workspaces/audit-logs?action=archive&workspace_i
 The `/app/` Admin overview also exposes these records with action, workspace
 ID, request ID, and time-range filters.
 
-Asynchronous export groundwork is represented by the `export_jobs` table and
-`ExportJobRepository`. Jobs start as `pending`, can be claimed by a worker as
-`running`, and then finish as `succeeded` or `failed`. The existing
-`/chat/logs/export` route remains synchronous until the next API step wires
-chat log exports into this job model.
+Asynchronous export groundwork is represented by the `export_jobs` table,
+`ExportJobRepository`, and `/exports/jobs` API. Jobs start as `pending`, can be
+claimed by a worker as `running`, and then finish as `succeeded` or `failed`.
+The existing `/chat/logs/export` route remains synchronous until the worker and
+download steps are wired in.
+
+Create and inspect an export job:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/exports/jobs `
+  -H "Authorization: Bearer dev-key" `
+  -H "X-Workspace-ID: public" `
+  -H "Content-Type: application/json" `
+  -d "{\"export_type\":\"chat_logs\",\"format\":\"jsonl\",\"filters\":{\"limit\":1000,\"offset\":0}}"
+
+curl.exe "http://127.0.0.1:8000/exports/jobs?status=pending&export_type=chat_logs" `
+  -H "Authorization: Bearer dev-key" `
+  -H "X-Workspace-ID: public"
+```
 
 Archived workspaces remain readable for audit and recovery, but write-oriented
 operations return `409 workspace archived`. This includes chat, streaming chat,

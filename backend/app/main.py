@@ -8,6 +8,7 @@ from backend.app.api import (
     routes_chat,
     routes_chat_sessions,
     routes_documents,
+    routes_exports,
     routes_health,
     routes_metrics,
     routes_workspaces,
@@ -44,6 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_chat.router)
     app.include_router(routes_chat_sessions.router)
     app.include_router(routes_documents.router)
+    app.include_router(routes_exports.router)
     app.include_router(routes_metrics.router)
     app.mount("/app", StaticFiles(directory=STATIC_DIR, html=True), name="app")
 
