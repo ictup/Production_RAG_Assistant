@@ -657,6 +657,11 @@ textarea:focus {
   gap: 10px;
 }
 
+.admin-audit-filter-grid {
+  display: grid;
+  gap: 10px;
+}
+
 .admin-toggle {
   display: flex;
   align-items: center;
@@ -775,6 +780,10 @@ textarea:focus {
 
 .admin-workspace.archived .admin-meta {
   color: var(--danger);
+}
+
+.admin-audit-item {
+  border-left: 3px solid var(--border-strong);
 }
 
 .admin-item-header {

@@ -101,7 +101,7 @@ docs/EVAL_TRENDS.md
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency/cost 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
-- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、编辑、归档、恢复、workspace 搜索、分页、状态过滤、当前页批量归档/恢复和跨页匹配批量预览/确认、归档 workspace 写入控件禁用、只读 admin overview、chat log audit filters、chat log audit export 和 chat log audit details
+- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、编辑、归档、恢复、workspace 搜索、分页、状态过滤、当前页批量归档/恢复和跨页匹配批量预览/确认、归档 workspace 写入控件禁用、只读 admin overview、chat log audit filters、chat log audit export、chat log audit details、workspace operation audit filters 和 workspace operation audit details
 
 ### 数据库与迁移
 
@@ -1277,6 +1277,7 @@ Completed: 2026-05-20T09:51:56Z
 - workspace 跨页批量 UI 确认流已完成：Admin overview 可按当前 status/search 预览匹配总数和样本，再带 `expected_total` 与 `confirm=true` 调用 archive-matching / restore-matching。
 - workspace 操作审计写入基础版已完成：单个 archive/restore、当前页 bulk archive/restore、跨页 matching archive/restore 会在同一事务写入 `workspace_audit_logs`，审计中保存 request id、API key hash、action、workspace ids 和操作 metadata。
 - workspace 操作审计查询 API 已完成：`GET /workspaces/audit-logs` 支持 `limit`、`offset`、`action`、`workspace_id`、`request_id`、`created_from` 和 `created_to`，并按 API key workspace 权限过滤。
+- workspace 操作审计 UI 已完成：Admin overview 会展示 `GET /workspaces/audit-logs` 返回的记录，支持 action、workspace id、request id、created from 和 created to 过滤，支持 Previous/Next 分页，并可展开查看 audit id、actor hash、metadata 等详情。
 - chat log 审计过滤基础版已完成：`GET /chat/logs` 支持 `offset`、`session_id`、`request_id`、`refusal_only`、`citation_valid`，Admin overview 支持对应筛选和 Previous/Next 翻页。
 - chat log 审计导出基础版已完成：`GET /chat/logs/export` 支持同一组过滤参数，可导出 JSONL 或 CSV，Admin overview 可按当前过滤条件触发下载。
 - chat log 审计详情基础版已完成：每条最近日志可展开查看 session、request、citation、sources、refusal、retrieval、query rewrite、metadata filter、usage 和 cost。
@@ -1401,19 +1402,20 @@ OPENAI_API_KEY
 26. workspace 跨页批量 UI 确认流。已完成。
 27. workspace 批量操作审计记录。已完成。
 28. workspace 操作审计查询 API。已完成。
+29. workspace 操作审计 UI。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-workspace 操作审计 UI
+导出任务异步化：job 表和后台执行模型
 ```
 
 原因：
 
-- workspace 归档/恢复 API、后端写保护、前端写入禁用、状态过滤、分页、搜索、后端状态过滤、批量操作 API、当前页批量操作 UI、跨页批量预览 API、跨页批量确认执行 API、跨页 UI 确认流、操作审计写入和审计查询 API 已完成。
-- 下一步可以在 Admin overview 中展示 workspace 操作审计记录，支持 action、workspace id、request id 和时间范围过滤。
+- workspace 归档/恢复 API、后端写保护、前端写入禁用、状态过滤、分页、搜索、后端状态过滤、批量操作 API、当前页批量操作 UI、跨页批量预览 API、跨页批量确认执行 API、跨页 UI 确认流、操作审计写入、审计查询 API 和审计 UI 已完成。
+- 下一步可以把同步导出升级为异步 job：先建立 export job 数据模型、状态流转和后台执行入口，为后续大文件存储、重试和下载链接打基础。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

@@ -58,8 +58,20 @@ def test_static_app_serves_index_html() -> None:
     assert 'id="export-admin-jsonl"' in response.text
     assert 'id="export-admin-csv"' in response.text
     assert 'id="admin-prev-logs"' in response.text
+    assert 'id="admin-audit-log-count"' in response.text
+    assert 'id="admin-audit-filter-form"' in response.text
+    assert 'id="admin-audit-action"' in response.text
+    assert 'id="admin-audit-workspace-id"' in response.text
+    assert 'id="admin-audit-request-id"' in response.text
+    assert 'id="admin-audit-created-from"' in response.text
+    assert 'id="admin-audit-created-to"' in response.text
+    assert 'id="clear-admin-audit-filters"' in response.text
+    assert 'id="admin-prev-audit-logs"' in response.text
+    assert 'id="admin-audit-page-info"' in response.text
+    assert 'id="admin-next-audit-logs"' in response.text
     assert 'id="admin-workspace-list"' in response.text
     assert 'id="admin-log-list"' in response.text
+    assert 'id="admin-audit-log-list"' in response.text
 
 
 def test_static_app_serves_assets() -> None:
@@ -103,6 +115,18 @@ def test_static_app_serves_assets() -> None:
     assert "optionalText" in script_response.text
     assert "buildChatLogsUrl" in script_response.text
     assert "buildChatLogsExportUrl" in script_response.text
+    assert "buildWorkspaceAuditLogsUrl" in script_response.text
+    assert "buildWorkspaceAuditLogParams" in script_response.text
+    assert "readAdminAuditFilters" in script_response.text
+    assert "clearAdminAuditFilters" in script_response.text
+    assert "renderAdminAuditLogs" in script_response.text
+    assert "renderAdminAuditPagination" in script_response.text
+    assert "workspaceAuditActionLabel" in script_response.text
+    assert "auditFilters" in script_response.text
+    assert "auditOffset" in script_response.text
+    assert "/workspaces/audit-logs?" in script_response.text
+    assert "created_from" in script_response.text
+    assert "created_to" in script_response.text
     assert "exportAdminLogs" in script_response.text
     assert "/chat/logs/export?" in script_response.text
     assert "readAdminFilters" in script_response.text
@@ -136,6 +160,8 @@ def test_static_app_serves_assets() -> None:
     assert ".admin-workspace-bulk-actions" in style_response.text
     assert ".admin-workspace-matching-actions" in style_response.text
     assert ".admin-workspace.selected" in style_response.text
+    assert ".admin-audit-filter-grid" in style_response.text
+    assert ".admin-audit-item" in style_response.text
     assert ".admin-create-form" in style_response.text
     assert ".admin-edit-form" in style_response.text
     assert ".admin-workspace-actions" in style_response.text

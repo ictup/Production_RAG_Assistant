@@ -170,6 +170,10 @@
               <span>Recent logs</span>
               <strong id="admin-log-count">0</strong>
             </div>
+            <div class="admin-stat">
+              <span>Workspace audit</span>
+              <strong id="admin-audit-log-count">0</strong>
+            </div>
           </div>
 
           <form id="admin-filter-form" class="admin-filter-form">
@@ -415,6 +419,74 @@
               <button id="admin-next-logs" type="button">Next</button>
             </div>
             <div id="admin-log-list" class="admin-list" aria-live="polite"></div>
+          </section>
+
+          <section class="admin-section" aria-label="Workspace operation audit">
+            <h3>Workspace operation audit</h3>
+            <form id="admin-audit-filter-form" class="admin-filter-form">
+              <div class="admin-audit-filter-grid">
+                <label>
+                  Action
+                  <select id="admin-audit-action" name="admin-audit-action">
+                    <option value="">Any</option>
+                    <option value="archive">Archive</option>
+                    <option value="restore">Restore</option>
+                    <option value="archive_matching">Archive Matching</option>
+                    <option value="restore_matching">Restore Matching</option>
+                  </select>
+                </label>
+                <label>
+                  Workspace ID
+                  <input
+                    id="admin-audit-workspace-id"
+                    name="admin-audit-workspace-id"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="tenant-a"
+                  />
+                </label>
+                <label>
+                  Request ID
+                  <input
+                    id="admin-audit-request-id"
+                    name="admin-audit-request-id"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="request-..."
+                  />
+                </label>
+                <label>
+                  Created from
+                  <input
+                    id="admin-audit-created-from"
+                    name="admin-audit-created-from"
+                    type="datetime-local"
+                  />
+                </label>
+                <label>
+                  Created to
+                  <input
+                    id="admin-audit-created-to"
+                    name="admin-audit-created-to"
+                    type="datetime-local"
+                  />
+                </label>
+              </div>
+              <div class="admin-filter-actions">
+                <button type="submit">Apply</button>
+                <button id="clear-admin-audit-filters" type="button">Clear</button>
+              </div>
+            </form>
+            <div class="admin-pagination">
+              <button id="admin-prev-audit-logs" type="button">Previous</button>
+              <span id="admin-audit-page-info">No audit logs</span>
+              <button id="admin-next-audit-logs" type="button">Next</button>
+            </div>
+            <div
+              id="admin-audit-log-list"
+              class="admin-list"
+              aria-live="polite"
+            ></div>
           </section>
         </section>
       </aside>

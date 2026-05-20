@@ -31,8 +31,9 @@ real provider key is available.
   reindex actions, workspace creation, editing, archive/restore actions, admin
   overview, workspace search, pagination, status filters, bulk archive/restore
   actions, cross-page matching bulk preview/confirmation, archived-workspace
-  read-only guards, audit filters, audit export, audit details, and chat error
-  recovery.
+  read-only guards, chat log audit filters, chat log audit export, chat log
+  audit details, workspace operation audit filters, workspace operation audit
+  details, and chat error recovery.
 - Dockerfile, production-style Compose stack, deployment runbook, and CI
   workflow.
 
@@ -268,6 +269,9 @@ Query workspace operation audit logs:
 curl.exe "http://127.0.0.1:8000/workspaces/audit-logs?action=archive&workspace_id=tenant-a&limit=20&offset=0" `
   -H "Authorization: Bearer dev-key"
 ```
+
+The `/app/` Admin overview also exposes these records with action, workspace
+ID, request ID, and time-range filters.
 
 Archived workspaces remain readable for audit and recovery, but write-oriented
 operations return `409 workspace archived`. This includes chat, streaming chat,

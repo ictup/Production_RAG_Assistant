@@ -7,10 +7,13 @@ const state = {
   admin: {
     workspaces: [],
     logs: [],
+    auditLogs: [],
     workspaceLimit: 20,
     workspaceOffset: 0,
     logLimit: 5,
     logOffset: 0,
+    auditLimit: 5,
+    auditOffset: 0,
     workspaceFilter: "all",
     workspaceSearch: "",
     selectedWorkspaceIds: new Set(),
@@ -20,6 +23,13 @@ const state = {
       sessionId: "",
       citationValid: "",
       refusalOnly: false,
+    },
+    auditFilters: {
+      action: "",
+      workspaceId: "",
+      requestId: "",
+      createdFrom: "",
+      createdTo: "",
     },
   },
   sending: false,
@@ -54,6 +64,7 @@ const els = {
   adminStatus: document.querySelector("#admin-status"),
   adminWorkspaceCount: document.querySelector("#admin-workspace-count"),
   adminLogCount: document.querySelector("#admin-log-count"),
+  adminAuditLogCount: document.querySelector("#admin-audit-log-count"),
   adminWorkspaceForm: document.querySelector("#admin-workspace-form"),
   adminWorkspaceId: document.querySelector("#admin-workspace-id"),
   adminWorkspaceName: document.querySelector("#admin-workspace-name"),
@@ -127,6 +138,17 @@ const els = {
   adminNextLogs: document.querySelector("#admin-next-logs"),
   adminPageInfo: document.querySelector("#admin-page-info"),
   adminLogList: document.querySelector("#admin-log-list"),
+  adminAuditFilterForm: document.querySelector("#admin-audit-filter-form"),
+  adminAuditAction: document.querySelector("#admin-audit-action"),
+  adminAuditWorkspaceId: document.querySelector("#admin-audit-workspace-id"),
+  adminAuditRequestId: document.querySelector("#admin-audit-request-id"),
+  adminAuditCreatedFrom: document.querySelector("#admin-audit-created-from"),
+  adminAuditCreatedTo: document.querySelector("#admin-audit-created-to"),
+  clearAdminAuditFilters: document.querySelector("#clear-admin-audit-filters"),
+  adminPrevAuditLogs: document.querySelector("#admin-prev-audit-logs"),
+  adminNextAuditLogs: document.querySelector("#admin-next-audit-logs"),
+  adminAuditPageInfo: document.querySelector("#admin-audit-page-info"),
+  adminAuditLogList: document.querySelector("#admin-audit-log-list"),
 };
 
 function init() {
@@ -312,6 +334,31 @@ function bindEvents() {
     state.admin.logOffset += state.admin.logLimit;
     void loadAdminOverview();
   });
+
+  els.adminAuditFilterForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    readAdminAuditFilters();
+    state.admin.auditOffset = 0;
+    void loadAdminOverview();
+  });
+
+  els.clearAdminAuditFilters.addEventListener("click", () => {
+    clearAdminAuditFilters();
+    void loadAdminOverview();
+  });
+
+  els.adminPrevAuditLogs.addEventListener("click", () => {
+    state.admin.auditOffset = Math.max(
+      0,
+      state.admin.auditOffset - state.admin.auditLimit,
+    );
+    void loadAdminOverview();
+  });
+
+  els.adminNextAuditLogs.addEventListener("click", () => {
+    state.admin.auditOffset += state.admin.auditLimit;
+    void loadAdminOverview();
+  });
 }
 
 function authHeaders() {
@@ -383,18 +430,21 @@ async function loadDocuments() {
 async function loadAdminOverview() {
   setAdminStatus("Loading admin overview");
   try {
-    const [workspaceResponse, logResponse] = await Promise.all([
+    const [workspaceResponse, logResponse, auditResponse] = await Promise.all([
       apiFetch(buildWorkspacesUrl()),
       apiFetch(buildChatLogsUrl()),
+      apiFetch(buildWorkspaceAuditLogsUrl()),
     ]);
-    const [workspaceBody, logBody] = await Promise.all([
+    const [workspaceBody, logBody, auditBody] = await Promise.all([
       workspaceResponse.json(),
       logResponse.json(),
+      auditResponse.json(),
     ]);
 
     state.admin.workspaces = workspaceBody.workspaces || [];
     pruneAdminWorkspaceSelection();
     state.admin.logs = logBody.logs || [];
+    state.admin.auditLogs = auditBody.audit_logs || [];
     renderAdminOverview({
       workspaceTotal: workspaceBody.total ?? state.admin.workspaces.length,
       workspaceCount: workspaceBody.count ?? state.admin.workspaces.length,
@@ -403,6 +453,10 @@ async function loadAdminOverview() {
       logTotal: logBody.count ?? state.admin.logs.length,
       logLimit: logBody.limit ?? state.admin.logLimit,
       logOffset: logBody.offset ?? state.admin.logOffset,
+      auditTotal: auditBody.total ?? state.admin.auditLogs.length,
+      auditCount: auditBody.count ?? state.admin.auditLogs.length,
+      auditLimit: auditBody.limit ?? state.admin.auditLimit,
+      auditOffset: auditBody.offset ?? state.admin.auditOffset,
     });
     setAdminStatus(`Updated ${formatTimestamp(new Date().toISOString())}`);
   } catch (error) {
@@ -741,6 +795,14 @@ function buildChatLogsUrl() {
   return `/chat/logs?${params.toString()}`;
 }
 
+function buildWorkspaceAuditLogsUrl() {
+  const params = buildWorkspaceAuditLogParams({
+    limit: state.admin.auditLimit,
+    offset: state.admin.auditOffset,
+  });
+  return `/workspaces/audit-logs?${params.toString()}`;
+}
+
 function buildWorkspacesUrl() {
   const params = new URLSearchParams({
     limit: String(state.admin.workspaceLimit),
@@ -793,6 +855,29 @@ function buildChatLogParams({ limit, offset }) {
   return params;
 }
 
+function buildWorkspaceAuditLogParams({ limit, offset }) {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (state.admin.auditFilters.action) {
+    params.set("action", state.admin.auditFilters.action);
+  }
+  if (state.admin.auditFilters.workspaceId) {
+    params.set("workspace_id", state.admin.auditFilters.workspaceId);
+  }
+  if (state.admin.auditFilters.requestId) {
+    params.set("request_id", state.admin.auditFilters.requestId);
+  }
+  if (state.admin.auditFilters.createdFrom) {
+    params.set("created_from", state.admin.auditFilters.createdFrom);
+  }
+  if (state.admin.auditFilters.createdTo) {
+    params.set("created_to", state.admin.auditFilters.createdTo);
+  }
+  return params;
+}
+
 function readAdminFilters() {
   state.admin.filters = {
     requestId: els.adminRequestId.value.trim(),
@@ -814,6 +899,32 @@ function clearAdminFilters() {
   els.adminSessionId.value = "";
   els.adminCitationValid.value = "";
   els.adminRefusalOnly.checked = false;
+}
+
+function readAdminAuditFilters() {
+  state.admin.auditFilters = {
+    action: els.adminAuditAction.value,
+    workspaceId: els.adminAuditWorkspaceId.value.trim(),
+    requestId: els.adminAuditRequestId.value.trim(),
+    createdFrom: els.adminAuditCreatedFrom.value.trim(),
+    createdTo: els.adminAuditCreatedTo.value.trim(),
+  };
+}
+
+function clearAdminAuditFilters() {
+  state.admin.auditFilters = {
+    action: "",
+    workspaceId: "",
+    requestId: "",
+    createdFrom: "",
+    createdTo: "",
+  };
+  state.admin.auditOffset = 0;
+  els.adminAuditAction.value = "";
+  els.adminAuditWorkspaceId.value = "";
+  els.adminAuditRequestId.value = "";
+  els.adminAuditCreatedFrom.value = "";
+  els.adminAuditCreatedTo.value = "";
 }
 
 function clearAdminWorkspaceSearch() {
@@ -1187,9 +1298,14 @@ function renderAdminOverview({
   logTotal,
   logLimit,
   logOffset,
+  auditTotal,
+  auditCount,
+  auditLimit,
+  auditOffset,
 }) {
   els.adminWorkspaceCount.textContent = String(workspaceTotal);
   els.adminLogCount.textContent = String(logTotal);
+  els.adminAuditLogCount.textContent = String(auditTotal);
   renderAdminWorkspaceFilters();
   syncAdminWorkspaceMatchingPreview();
   renderAdminWorkspaces();
@@ -1207,6 +1323,13 @@ function renderAdminOverview({
     limit: logLimit,
     offset: logOffset,
   });
+  renderAdminAuditLogs();
+  renderAdminAuditPagination({
+    count: auditCount,
+    total: auditTotal,
+    limit: auditLimit,
+    offset: auditOffset,
+  });
 }
 
 function renderAdminPagination({ count, limit, offset }) {
@@ -1215,6 +1338,15 @@ function renderAdminPagination({ count, limit, offset }) {
   els.adminPageInfo.textContent = count > 0 ? `Logs ${start}-${end}` : "No logs";
   els.adminPrevLogs.disabled = offset <= 0;
   els.adminNextLogs.disabled = count < limit;
+}
+
+function renderAdminAuditPagination({ count, total, limit, offset }) {
+  const start = total > 0 ? offset + 1 : 0;
+  const end = total > 0 ? offset + count : 0;
+  els.adminAuditPageInfo.textContent =
+    total > 0 ? `Audit ${start}-${end} of ${total}` : "No audit logs";
+  els.adminPrevAuditLogs.disabled = offset <= 0;
+  els.adminNextAuditLogs.disabled = offset + count >= total || count < limit;
 }
 
 function renderAdminWorkspacePagination({ count, total, limit, offset }) {
@@ -1394,6 +1526,51 @@ function renderAdminLogs() {
   }
 }
 
+function renderAdminAuditLogs() {
+  els.adminAuditLogList.innerHTML = "";
+  if (!state.admin.auditLogs.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No workspace operation audit logs";
+    els.adminAuditLogList.append(empty);
+    return;
+  }
+
+  for (const auditLog of state.admin.auditLogs) {
+    const item = document.createElement("article");
+    item.className = "admin-item admin-audit-item";
+
+    const header = document.createElement("div");
+    header.className = "admin-item-header";
+
+    const title = document.createElement("span");
+    title.className = "admin-title";
+    title.textContent = workspaceAuditActionLabel(auditLog.action);
+
+    const badge = document.createElement("span");
+    badge.className = "admin-badge";
+    badge.textContent = `${formatAuditWorkspaceCount(auditLog)} workspace(s)`;
+
+    const workspaces = document.createElement("div");
+    workspaces.className = "admin-text";
+    workspaces.textContent = formatAuditWorkspaceIds(auditLog.workspace_ids);
+
+    const meta = document.createElement("div");
+    meta.className = "admin-meta";
+    meta.textContent = [
+      formatTimestamp(auditLog.created_at),
+      `request ${auditLog.request_id || "unknown"}`,
+      `actor ${formatAuditActorHash(auditLog.actor_hash)}`,
+    ].join(" / ");
+
+    const detail = buildWorkspaceAuditLogDetails(auditLog);
+
+    header.append(title, badge);
+    item.append(header, workspaces, meta, detail);
+    els.adminAuditLogList.append(item);
+  }
+}
+
 function buildChatLogAuditDetails(log) {
   const detail = document.createElement("details");
   detail.className = "admin-detail";
@@ -1419,6 +1596,29 @@ function buildChatLogAuditDetails(log) {
   );
   appendAdminDetailRow(grid, "Usage", formatUsage(log.usage));
   appendAdminDetailRow(grid, "Cost", formatCost(log.usage));
+
+  detail.append(summary, grid);
+  return detail;
+}
+
+function buildWorkspaceAuditLogDetails(auditLog) {
+  const detail = document.createElement("details");
+  detail.className = "admin-detail";
+
+  const summary = document.createElement("summary");
+  summary.textContent = "Operation details";
+
+  const grid = document.createElement("div");
+  grid.className = "admin-detail-grid";
+
+  appendAdminDetailRow(grid, "Audit ID", auditLog.id);
+  appendAdminDetailRow(grid, "Action", auditLog.action);
+  appendAdminDetailRow(grid, "Workspaces", formatAuditWorkspaceIds(auditLog.workspace_ids));
+  appendAdminDetailRow(grid, "Workspace count", formatAuditWorkspaceCount(auditLog));
+  appendAdminDetailRow(grid, "Request", auditLog.request_id || "unknown");
+  appendAdminDetailRow(grid, "Actor hash", auditLog.actor_hash || "unknown");
+  appendAdminDetailRow(grid, "Metadata", formatJsonPreview(auditLog.metadata));
+  appendAdminDetailRow(grid, "Created", formatTimestamp(auditLog.created_at));
 
   detail.append(summary, grid);
   return detail;
@@ -1820,6 +2020,39 @@ function formatQueryRewrite(queryRewrite) {
     ? ` / query ${truncateText(queryRewrite.retrieval_query, 80)}`
     : "";
   return `${status} / ${provider} / ${history}${query}`;
+}
+
+function workspaceAuditActionLabel(action) {
+  const labels = {
+    archive: "Archive",
+    restore: "Restore",
+    archive_matching: "Archive matching",
+    restore_matching: "Restore matching",
+  };
+  return labels[action] || String(action || "unknown");
+}
+
+function formatAuditWorkspaceIds(workspaceIds) {
+  if (!Array.isArray(workspaceIds) || !workspaceIds.length) {
+    return "none";
+  }
+  return workspaceIds.join(", ");
+}
+
+function formatAuditWorkspaceCount(auditLog) {
+  const count = Number(auditLog.workspace_count);
+  if (Number.isFinite(count)) {
+    return String(count);
+  }
+  return String(Array.isArray(auditLog.workspace_ids) ? auditLog.workspace_ids.length : 0);
+}
+
+function formatAuditActorHash(actorHash) {
+  const value = String(actorHash || "").trim();
+  if (!value) {
+    return "unknown";
+  }
+  return `${value.slice(0, 12)}...`;
 }
 
 function formatUsage(usage) {
