@@ -989,6 +989,21 @@ eval cases: 9/9 passed (100.0%)
 - security_questions: 2/2 passed (100.0%)
 ```
 
+最近一次真实 OpenAI 端到端验证也已通过：
+
+```text
+embedding smoke: text-embedding-3-small, 1536 dimensions, passed
+reindex public: 6 chunks matched, 6 embedded, 6 updated
+generator smoke: openai / gpt-5.4-nano, passed
+pipeline smoke: openai embedding + openai generator, passed
+pipeline smoke: openai query rewrite + reranker + embedding + generator, passed
+OpenAI eval gate: 9/9 passed (100.0%)
+```
+
+`rag_005` 的 expected keywords 已从实现细节词收敛为 `KV` 和 `paged`，
+用于稳定验证 metadata filter 命中 PagedAttention/kv-cache 语义，同时兼容
+fake generator 和真实 OpenAI generator 的不同表述。
+
 ### 生成 eval JSON 报告
 
 默认写入：
@@ -1246,6 +1261,7 @@ Completed: 2026-05-20T09:51:56Z
 - OpenAI Responses API listwise reranker 已完成，默认仍为 no-op，可用 `RERANKER_PROVIDER=openai` 启用。
 - metadata filter 基础版已接入 `/chat` 和 `/chat/stream`，会应用到 vector/sparse retrieval 的 `document_chunks.metadata @>` 条件。
 - provider generation token 和 OpenAI embedding token 成本估算基础版已完成：`PROVIDER_PRICE_TABLE`、响应 usage cost 字段、Prometheus `rag_provider_cost_usd_total`。
+- 真实 OpenAI 端到端验证已完成：OpenAI embedding smoke、public workspace chunk reindex、OpenAI generator smoke、OpenAI eval gate，以及包含 query rewrite/reranker 的 pipeline smoke 均通过。
 
 ### 检索质量
 
@@ -1435,19 +1451,20 @@ OPENAI_API_KEY
 35. 导出任务运维补强：running 超时恢复。已完成。
 36. 导出任务运维补强：过期导出文件清理。已完成。
 37. 导出任务运维补强：失败任务手动重试。已完成。
+38. 真实 OpenAI 端到端验证。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-真实 OpenAI 端到端验证
+生产配置和 secrets 收紧
 ```
 
 原因：
 
-- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker、production compose 编排、running 超时恢复、过期文件清理和失败任务手动重试已完成。
-- 下一步可以使用 `.env` 中的真实 `OPENAI_API_KEY` 做 OpenAI embedding smoke、chunk reindex、generator smoke 和 eval gate，验证 fake provider 到真实 provider 的完整切换链路。
+- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker、production compose 编排、running 超时恢复、过期文件清理、失败任务手动重试和真实 OpenAI 端到端验证已完成。
+- 下一步可以收紧生产启动前配置校验、secret manager/部署平台说明、`.env.example` 与 runbook 的最终生产说明，减少真实部署时的配置漂移。
 
 以下命令是后续需要真实 provider 时的验证入口：
 
