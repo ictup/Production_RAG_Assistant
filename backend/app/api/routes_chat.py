@@ -13,8 +13,10 @@ from backend.app.api.workspace_validation import (
     get_workspace_repository,
     require_existing_workspace,
 )
+from backend.app.core.config import Settings, get_settings
 from backend.app.core.logging import serialize_log_payload
 from backend.app.core.request_id import get_request_id
+from backend.app.db.models import ChatLog
 from backend.app.db.repositories import (
     ChatLogRepository,
     ChatSessionRepository,
@@ -29,6 +31,7 @@ from backend.app.rag.pipeline import (
     ChatPipelineResponse,
     RagPipeline,
 )
+from backend.app.rag.query_rewriting import ConversationTurn
 from backend.app.schemas.chat import ChatLogsResponse, ChatRequest, ChatResponse
 
 router = APIRouter(tags=["chat"])
@@ -111,6 +114,34 @@ async def resolve_chat_session_id(
             detail="chat session not found",
         )
     return session_id
+
+
+def build_chat_history_turns(chat_logs: list[ChatLog]) -> list[ConversationTurn]:
+    return [
+        ConversationTurn(
+            question=chat_log.question,
+            answer=chat_log.answer,
+        )
+        for chat_log in chat_logs
+    ]
+
+
+async def load_session_chat_history(
+    *,
+    session_id: uuid.UUID | None,
+    workspace_id: str,
+    repository: ChatLogRepository,
+    settings: Settings,
+) -> list[ConversationTurn]:
+    if session_id is None or settings.query_context_history_limit <= 0:
+        return []
+
+    chat_logs = await repository.list_recent_chat_logs_by_session(
+        session_id=session_id,
+        workspace_id=workspace_id,
+        limit=settings.query_context_history_limit,
+    )
+    return build_chat_history_turns(chat_logs)
 
 
 def map_provider_error_status(error: OpenAIProviderError) -> int:
@@ -197,6 +228,7 @@ async def run_chat_request(
     pipeline: RagPipeline,
     chat_log_repository: ChatLogRepository,
     chat_session_repository: ChatSessionRepository,
+    settings: Settings,
     workspace_id: str,
 ) -> tuple[str, uuid.UUID | None, ChatPipelineResponse]:
     request_id = get_request_id(http_request)
@@ -205,10 +237,17 @@ async def run_chat_request(
         workspace_id=workspace_id,
         repository=chat_session_repository,
     )
+    chat_history = await load_session_chat_history(
+        session_id=session_id,
+        workspace_id=workspace_id,
+        repository=chat_log_repository,
+        settings=settings,
+    )
     try:
         response = await pipeline.answer_question(
             request.to_pipeline_request(
                 workspace_id=workspace_id,
+                chat_history=chat_history,
             )
         )
     except OpenAIProviderError as exc:
@@ -346,6 +385,7 @@ async def chat(
     request: ChatRequest,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     pipeline: Annotated[RagPipeline, Depends(get_rag_pipeline)],
+    settings: Annotated[Settings, Depends(get_settings)],
     chat_log_repository: Annotated[
         ChatLogRepository,
         Depends(get_chat_log_repository),
@@ -371,6 +411,7 @@ async def chat(
         pipeline=pipeline,
         chat_log_repository=chat_log_repository,
         chat_session_repository=chat_session_repository,
+        settings=settings,
         workspace_id=normalized_workspace_id,
     )
     return ChatResponse.from_pipeline_response(
@@ -386,6 +427,7 @@ async def chat_stream(
     request: ChatRequest,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     pipeline: Annotated[RagPipeline, Depends(get_rag_pipeline)],
+    settings: Annotated[Settings, Depends(get_settings)],
     chat_log_repository: Annotated[
         ChatLogRepository,
         Depends(get_chat_log_repository),
@@ -411,8 +453,15 @@ async def chat_stream(
         workspace_id=normalized_workspace_id,
         repository=chat_session_repository,
     )
+    chat_history = await load_session_chat_history(
+        session_id=session_id,
+        workspace_id=normalized_workspace_id,
+        repository=chat_log_repository,
+        settings=settings,
+    )
     pipeline_request = request.to_pipeline_request(
         workspace_id=normalized_workspace_id,
+        chat_history=chat_history,
     )
     return StreamingResponse(
         iter_chat_stream_events(

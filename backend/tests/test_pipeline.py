@@ -11,7 +11,7 @@ from backend.app.core.tracing import TRACE_LOGGER_NAME, trace_context
 from backend.app.rag.embeddings import FakeEmbeddingClient
 from backend.app.rag.generation import FakeGenerator
 from backend.app.rag.pipeline import ChatPipelineRequest, RagPipeline
-from backend.app.rag.query_rewriting import QueryRewriteResult
+from backend.app.rag.query_rewriting import ConversationTurn, QueryRewriteResult
 from backend.app.rag.refusal import REFUSAL_ANSWER
 from backend.app.rag.reranking import NoOpReranker
 
@@ -56,15 +56,18 @@ class StaticQueryRewriter:
     def __init__(self, rewritten_query: str) -> None:
         self.rewritten_query = rewritten_query
         self.questions: list[str] = []
+        self.chat_history: list[list[ConversationTurn]] = []
 
-    async def rewrite(self, *, question: str, metadata_filter=None):
+    async def rewrite(self, *, question: str, metadata_filter=None, chat_history=None):
         self.questions.append(question)
+        self.chat_history.append(list(chat_history or []))
         return QueryRewriteResult(
             original_query=question,
             rewritten_query=self.rewritten_query,
             provider_name=self.provider_name,
             model_name=self.model_name,
             rewritten=self.rewritten_query != question,
+            history_turn_count=len(chat_history or []),
         )
 
 
@@ -214,14 +217,31 @@ async def test_pipeline_uses_rewritten_query_for_retrieval() -> None:
     )
 
     response = await pipeline.answer_question(
-        ChatPipelineRequest(question="What problem does FlashAttention solve?")
+        ChatPipelineRequest(
+            question="What problem does it solve?",
+            chat_history=[
+                ConversationTurn(
+                    question="What is FlashAttention?",
+                    answer="FlashAttention is an IO-aware attention algorithm.",
+                )
+            ],
+        )
     )
 
-    assert query_rewriter.questions == ["What problem does FlashAttention solve?"]
+    assert query_rewriter.questions == ["What problem does it solve?"]
+    assert query_rewriter.chat_history == [
+        [
+            ConversationTurn(
+                question="What is FlashAttention?",
+                answer="FlashAttention is an IO-aware attention algorithm.",
+            )
+        ]
+    ]
     assert embedding_client.queries == ["FlashAttention memory traffic HBM SRAM"]
     assert response.retrieval.query_rewrite.provider == "test"
     assert response.retrieval.query_rewrite.model == "test-rewrite"
     assert response.retrieval.query_rewrite.rewritten is True
+    assert response.retrieval.query_rewrite.history_turn_count == 1
     assert response.retrieval.query_rewrite.retrieval_query == (
         "FlashAttention memory traffic HBM SRAM"
     )

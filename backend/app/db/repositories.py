@@ -539,6 +539,29 @@ class ChatLogRepository:
         logs = list((await self.session.scalars(statement)).all())
         return ChatLogListResult(total=int(total or 0), logs=logs)
 
+    async def list_recent_chat_logs_by_session(
+        self,
+        *,
+        session_id: uuid.UUID,
+        workspace_id: str = "public",
+        limit: int = 4,
+    ) -> list[ChatLog]:
+        workspace_id = workspace_id.strip() or "public"
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+
+        statement = (
+            select(ChatLog)
+            .where(
+                ChatLog.workspace_id == workspace_id,
+                ChatLog.session_id == session_id,
+            )
+            .order_by(ChatLog.created_at.desc(), ChatLog.id.desc())
+            .limit(limit)
+        )
+        logs = list((await self.session.scalars(statement)).all())
+        return list(reversed(logs))
+
 
 class ChatSessionRepository:
     def __init__(self, session: AsyncSession) -> None:

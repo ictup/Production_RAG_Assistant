@@ -1,5 +1,5 @@
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -17,10 +17,13 @@ OPENAI_RESPONSES_PATH = "/responses"
 OPENAI_QUERY_REWRITE_INSTRUCTIONS = (
     "You rewrite user questions into concise search queries for a production "
     "RAG retriever. Preserve technical entities, acronyms, product names, and "
-    "constraints. Remove conversational filler. Return only the rewritten query "
-    "as plain text, without quotes or explanation."
+    "constraints. Use recent conversation history to resolve follow-up "
+    "questions, pronouns, and implicit references. Remove conversational "
+    "filler. Return only the rewritten query as plain text, without quotes or "
+    "explanation."
 )
 MAX_REWRITTEN_QUERY_CHARS = 512
+MAX_HISTORY_TEXT_CHARS = 800
 
 
 class OpenAIQueryRewriteError(OpenAIProviderError):
@@ -34,6 +37,13 @@ class QueryRewriteResult:
     provider_name: str
     model_name: str
     rewritten: bool
+    history_turn_count: int = 0
+
+
+@dataclass(frozen=True)
+class ConversationTurn:
+    question: str
+    answer: str
 
 
 @runtime_checkable
@@ -46,6 +56,7 @@ class QueryRewriter(Protocol):
         *,
         question: str,
         metadata_filter: Mapping[str, Any] | None = None,
+        chat_history: Sequence[ConversationTurn] | None = None,
     ) -> QueryRewriteResult:
         pass
 
@@ -59,6 +70,7 @@ class NoOpQueryRewriter:
         *,
         question: str,
         metadata_filter: Mapping[str, Any] | None = None,
+        chat_history: Sequence[ConversationTurn] | None = None,
     ) -> QueryRewriteResult:
         normalized_question = normalize_question(question)
         return QueryRewriteResult(
@@ -67,6 +79,7 @@ class NoOpQueryRewriter:
             provider_name=self.provider_name,
             model_name=self.model_name,
             rewritten=False,
+            history_turn_count=len(chat_history or ()),
         )
 
 
@@ -113,6 +126,7 @@ class OpenAIQueryRewriter:
         *,
         question: str,
         metadata_filter: Mapping[str, Any] | None = None,
+        chat_history: Sequence[ConversationTurn] | None = None,
     ) -> QueryRewriteResult:
         original_query = normalize_question(question)
         payload = {
@@ -121,6 +135,7 @@ class OpenAIQueryRewriter:
             "input": build_query_rewrite_prompt(
                 question=original_query,
                 metadata_filter=metadata_filter,
+                chat_history=chat_history,
             ),
             "max_output_tokens": self.max_output_tokens,
             "store": False,
@@ -141,6 +156,7 @@ class OpenAIQueryRewriter:
             provider_name=self.provider_name,
             model_name=self.model_name,
             rewritten=rewritten_query.casefold() != original_query.casefold(),
+            history_turn_count=len(chat_history or ()),
         )
 
     async def _create_response(self, payload: dict) -> dict:
@@ -201,6 +217,7 @@ def build_query_rewrite_prompt(
     *,
     question: str,
     metadata_filter: Mapping[str, Any] | None = None,
+    chat_history: Sequence[ConversationTurn] | None = None,
 ) -> str:
     metadata = metadata_filter or {}
     metadata_text = (
@@ -211,10 +228,41 @@ def build_query_rewrite_prompt(
     return "\n\n".join(
         [
             f"Question:\n{question}",
+            "Recent conversation history (oldest to newest):\n"
+            f"{format_chat_history(chat_history)}",
             f"Metadata filter:\n{metadata_text}",
             "Rewrite as one concise retrieval query.",
         ]
     )
+
+
+def format_chat_history(
+    chat_history: Sequence[ConversationTurn] | None = None,
+) -> str:
+    if not chat_history:
+        return "[]"
+
+    turns = []
+    for index, turn in enumerate(chat_history, start=1):
+        question = truncate_history_text(turn.question)
+        answer = truncate_history_text(turn.answer)
+        turns.append(
+            "\n".join(
+                [
+                    f"Turn {index}:",
+                    f"User: {question}",
+                    f"Assistant: {answer}",
+                ]
+            )
+        )
+    return "\n\n".join(turns)
+
+
+def truncate_history_text(text: str) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= MAX_HISTORY_TEXT_CHARS:
+        return normalized
+    return normalized[: MAX_HISTORY_TEXT_CHARS - 3].rstrip() + "..."
 
 
 def normalize_question(question: str) -> str:

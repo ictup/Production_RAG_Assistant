@@ -94,11 +94,17 @@ class FakePipeline:
 
 
 class FakeChatLogRepository:
-    def __init__(self, recent_logs: list[ChatLog] | None = None) -> None:
+    def __init__(
+        self,
+        recent_logs: list[ChatLog] | None = None,
+        session_logs: list[ChatLog] | None = None,
+    ) -> None:
         self.inputs: list[CreateChatLogInput] = []
         self.commit_flags: list[bool] = []
         self.recent_logs = recent_logs or []
+        self.session_logs = session_logs or []
         self.list_calls: list[tuple[str, int]] = []
+        self.session_log_calls: list[tuple[uuid.UUID, str, int]] = []
 
     async def create_chat_log(
         self,
@@ -117,6 +123,16 @@ class FakeChatLogRepository:
     ) -> list[ChatLog]:
         self.list_calls.append((workspace_id, limit))
         return self.recent_logs
+
+    async def list_recent_chat_logs_by_session(
+        self,
+        *,
+        session_id: uuid.UUID,
+        workspace_id: str = "public",
+        limit: int = 4,
+    ) -> list[ChatLog]:
+        self.session_log_calls.append((session_id, workspace_id, limit))
+        return self.session_logs
 
 
 class FakeChatSessionRepository:
@@ -160,13 +176,19 @@ def make_source() -> Source:
     )
 
 
-def make_chat_log_model() -> ChatLog:
+def make_chat_log_model(
+    *,
+    session_id: uuid.UUID | None = None,
+    question: str = "What problem does FlashAttention solve?",
+    answer: str = "FlashAttention reduces memory traffic. [1]",
+) -> ChatLog:
     return ChatLog(
         id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
         request_id="request-1",
         workspace_id="tenant-a",
-        question="What problem does FlashAttention solve?",
-        answer="FlashAttention reduces memory traffic. [1]",
+        session_id=session_id,
+        question=question,
+        answer=answer,
         sources=[{"source_id": "1", "title": "FlashAttention Notes"}],
         retrieval={"mode": "hybrid_rrf_rerank"},
         usage={"model": "fake-llm", "latency_ms": 12},
@@ -311,7 +333,12 @@ def test_chat_route_returns_answer_sources_and_metadata() -> None:
 def test_chat_route_attaches_log_to_existing_session() -> None:
     chat_session = make_chat_session_model()
     fake_pipeline = FakePipeline()
-    fake_chat_log_repository = FakeChatLogRepository()
+    history_log = make_chat_log_model(
+        session_id=chat_session.id,
+        question="What is FlashAttention?",
+        answer="FlashAttention is IO-aware attention.",
+    )
+    fake_chat_log_repository = FakeChatLogRepository(session_logs=[history_log])
     fake_chat_session_repository = FakeChatSessionRepository(sessions=[chat_session])
     client = build_client(
         fake_pipeline,
@@ -335,9 +362,56 @@ def test_chat_route_attaches_log_to_existing_session() -> None:
     body = response.json()
     assert body["session_id"] == str(chat_session.id)
     assert fake_chat_session_repository.get_calls == [(chat_session.id, "tenant-a")]
+    assert fake_chat_log_repository.session_log_calls == [
+        (chat_session.id, "tenant-a", 4)
+    ]
     assert len(fake_pipeline.requests) == 1
+    assert (
+        fake_pipeline.requests[0].chat_history[0].question
+        == "What is FlashAttention?"
+    )
+    assert fake_pipeline.requests[0].chat_history[0].answer == (
+        "FlashAttention is IO-aware attention."
+    )
     assert len(fake_chat_log_repository.inputs) == 1
     assert fake_chat_log_repository.inputs[0].session_id == chat_session.id
+
+
+def test_chat_route_skips_session_history_when_limit_is_zero() -> None:
+    chat_session = make_chat_session_model()
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository(
+        session_logs=[
+            make_chat_log_model(
+                session_id=chat_session.id,
+                question="What is FlashAttention?",
+                answer="FlashAttention is IO-aware attention.",
+            )
+        ]
+    )
+    fake_chat_session_repository = FakeChatSessionRepository(sessions=[chat_session])
+    client = build_client(
+        fake_pipeline,
+        fake_chat_log_repository,
+        fake_chat_session_repository,
+        settings=Settings(api_keys="dev-key", query_context_history_limit=0),
+    )
+
+    response = client.post(
+        "/chat",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "tenant-a",
+        },
+        json={
+            "question": "What problem does it solve?",
+            "session_id": str(chat_session.id),
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_chat_log_repository.session_log_calls == []
+    assert fake_pipeline.requests[0].chat_history == []
 
 
 def test_chat_route_rejects_missing_session_before_pipeline_call() -> None:
@@ -435,6 +509,10 @@ def test_chat_stream_route_returns_sse_events_and_logs_chat() -> None:
     assert final["session_id"] == str(chat_session.id)
     assert final["request_id"] == response.headers["X-Request-ID"]
     assert final["answer"] == events[1][1]["delta"]
+    assert fake_chat_log_repository.session_log_calls == [
+        (chat_session.id, "tenant-a", 4)
+    ]
+    assert fake_pipeline.requests[0].chat_history == []
     assert fake_chat_log_repository.commit_flags == [True]
     assert fake_chat_log_repository.inputs[0].session_id == chat_session.id
 

@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     query_rewriter_provider: Literal["none", "openai"] = "none"
     query_rewrite_model: str = "gpt-5.4-nano"
     query_rewrite_max_output_tokens: int = Field(default=64, gt=0)
+    query_context_history_limit: int = Field(default=4, ge=0)
     reranker_provider: Literal["none", "openai"] = "none"
     reranker_model: str = "gpt-5.4-nano"
     rerank_top_n: int = 5

@@ -13,6 +13,7 @@ from backend.app.rag.pipeline import (
     RetrievalInfo,
     UsageInfo,
 )
+from backend.app.rag.query_rewriting import ConversationTurn
 from backend.app.rag.refusal import RefusalInfo
 
 
@@ -43,10 +44,16 @@ class ChatRequest(BaseModel):
             raise ValueError("metadata_filter must be an object")
         return normalize_metadata_filter(value)
 
-    def to_pipeline_request(self, *, workspace_id: str) -> ChatPipelineRequest:
+    def to_pipeline_request(
+        self,
+        *,
+        workspace_id: str,
+        chat_history: list[ConversationTurn] | None = None,
+    ) -> ChatPipelineRequest:
         return ChatPipelineRequest(
             question=self.question,
             workspace_id=workspace_id,
+            chat_history=list(chat_history or []),
             metadata_filter=self.metadata_filter,
             vector_top_k=self.vector_top_k,
             sparse_top_k=self.sparse_top_k,

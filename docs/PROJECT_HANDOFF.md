@@ -56,7 +56,7 @@ docs/EVAL_TRENDS.md
 
 这是一个生产风格的 RAG assistant 后端项目。当前阶段已经完成了可本地运行、可 ingest、可检索、可回答、可记录日志、可评测、可 CI 回归的后端 MVP。
 
-当前默认仍然使用 fake generator、no-op query rewriter 和 no-op reranker。embedding、query rewriter、generator 和 reranker 都可以在本地默认模式和 OpenAI 之间切换；只有把对应 provider 改为 `openai` 并配置 `OPENAI_API_KEY` 后才会发真实 OpenAI API 请求。
+当前默认仍然使用 fake generator、no-op query rewriter 和 no-op reranker。embedding、query rewriter、generator 和 reranker 都可以在本地默认模式和 OpenAI 之间切换；只有把对应 provider 改为 `openai` 并配置 `OPENAI_API_KEY` 后才会发真实 OpenAI API 请求。`/chat` 和 `/chat/stream` 传入 `session_id` 时，会读取最近会话历史并传给 query rewrite，用于多轮 follow-up 检索上下文化。
 
 ## 2. 已完成的主要工作
 
@@ -127,6 +127,7 @@ docs/EVAL_TRENDS.md
 - OpenAI embedding client
 - no-op query rewriter
 - OpenAI Responses API query rewriter
+- session history query contextualization for query rewrite
 - vector retrieval
 - sparse retrieval
 - metadata filter for vector/sparse retrieval
@@ -282,6 +283,7 @@ GENERATOR_PROVIDER=fake
 QUERY_REWRITER_PROVIDER=none
 QUERY_REWRITE_MODEL=gpt-5.4-nano
 QUERY_REWRITE_MAX_OUTPUT_TOKENS=64
+QUERY_CONTEXT_HISTORY_LIMIT=4
 RERANKER_PROVIDER=none
 RERANKER_MODEL=gpt-5.4-nano
 API_KEYS=dev-key
@@ -333,9 +335,10 @@ LLM_MODEL=gpt-5.4-nano
 QUERY_REWRITER_PROVIDER=openai
 QUERY_REWRITE_MODEL=gpt-5.4-nano
 QUERY_REWRITE_MAX_OUTPUT_TOKENS=64
+QUERY_CONTEXT_HISTORY_LIMIT=4
 ```
 
-OpenAI query rewriter 会在 question guard 之后、embedding/sparse retrieval 之前调用 Responses API，把用户原始问题改写成更适合检索的短查询；默认 `QUERY_REWRITER_PROVIDER=none` 不会产生额外外部请求。
+OpenAI query rewriter 会在 question guard 之后、embedding/sparse retrieval 之前调用 Responses API，把用户原始问题改写成更适合检索的短查询；默认 `QUERY_REWRITER_PROVIDER=none` 不会产生额外外部请求。如果请求带 `session_id`，API 会读取最近 `QUERY_CONTEXT_HISTORY_LIMIT` 条历史问答，并把它们传入 query rewrite prompt，让 “它/这个/刚才那个” 这类追问先变成独立检索 query。设置 `QUERY_CONTEXT_HISTORY_LIMIT=0` 可以关闭历史加载。
 
 如果要启用 OpenAI reranker，可以继续设置：
 
@@ -797,7 +800,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-427 passed
+431 passed
 ```
 
 ### Pipeline Smoke
@@ -990,8 +993,9 @@ flowchart TD
     B --> C["Document and chunk tables"]
     C --> D["Embeddings stored in pgvector"]
     E["POST /chat"] --> F["API key and workspace"]
-    F --> G["Question-level refusal guard"]
-    G --> QR["Optional query rewrite"]
+    F --> HIST["Optional session history"]
+    HIST --> G["Question-level refusal guard"]
+    G --> QR["Optional query rewrite/contextualization"]
     QR --> MF["Optional metadata_filter"]
     MF --> H["Vector retrieval"]
     MF --> I["Sparse retrieval"]
@@ -1093,6 +1097,7 @@ Repository -> Settings -> Actions -> General
 - provider token 统计和 embedding/generation latency 细分指标。
 - OpenAI Responses API streaming 已接入 generator 和 `/chat/stream`。
 - OpenAI Responses API query rewriter 已完成，默认仍为 no-op，可用 `QUERY_REWRITER_PROVIDER=openai` 启用。
+- 多轮 query contextualization 已完成：带 `session_id` 的 `/chat` 和 `/chat/stream` 会读取最近 session logs，并传给 query rewrite prompt。
 - OpenAI Responses API listwise reranker 已完成，默认仍为 no-op，可用 `RERANKER_PROVIDER=openai` 启用。
 - metadata filter 基础版已接入 `/chat` 和 `/chat/stream`，会应用到 vector/sparse retrieval 的 `document_chunks.metadata @>` 条件。
 - provider generation token 成本估算基础版已完成：`PROVIDER_PRICE_TABLE`、响应 usage cost 字段、Prometheus `rag_provider_cost_usd_total`。
@@ -1101,7 +1106,6 @@ Repository -> Settings -> Actions -> General
 ### 检索质量
 
 - 更大的文档集合。
-- 多轮对话里的 query contextualization。
 
 ### 产品 API
 
@@ -1210,6 +1214,7 @@ OPENAI_API_KEY
 6. 底层 OpenAI Responses 真 token streaming。
 7. 简单前端聊天 UI。
 8. 文档上传 UI。
+9. 多轮 query contextualization。已完成。
 
 ### 阶段 E：生产化
 
@@ -1236,7 +1241,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-multi-turn query contextualization
+embedding token usage and cost estimates
 ```
 
 原因：
@@ -1249,7 +1254,7 @@ multi-turn query contextualization
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
 - provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- query rewrite 已完成，下一步补多轮 query contextualization，让 follow-up 问题能结合 chat history 形成独立检索查询。
+- 多轮 query contextualization 已完成，下一步可以补 embedding token usage/cost，让 provider 成本估算覆盖 generation 和 embedding 两类调用。
 
 启用 OpenAI embedding 后可以先跑：
 

@@ -76,7 +76,9 @@ before prompt construction, so it adds one extra OpenAI call per answered chat
 request when enabled.
 OpenAI query rewrite uses the Responses API before embedding and sparse
 retrieval, so it also adds one extra OpenAI call per answered chat request when
-enabled.
+enabled. When a request is attached to a chat session, the API can also pass the
+most recent session turns into query rewrite so follow-up questions can be
+contextualized before retrieval.
 
 ## Secrets Rules
 
@@ -168,6 +170,7 @@ enabled.
 | `QUERY_REWRITER_PROVIDER` | `none` | Yes | Query rewrite provider. Supported values: `none`, `openai`. |
 | `QUERY_REWRITE_MODEL` | `gpt-5.4-nano` | Yes for OpenAI query rewrite | Model used to rewrite the user question into a concise retrieval query. |
 | `QUERY_REWRITE_MAX_OUTPUT_TOKENS` | `64` | No | Maximum output tokens for OpenAI query rewrite responses. |
+| `QUERY_CONTEXT_HISTORY_LIMIT` | `4` | No | Number of recent session turns passed into query rewrite for multi-turn follow-up contextualization. Set to `0` to disable history loading. |
 | `RERANKER_PROVIDER` | `none` | Yes | Reranker provider. Supported values: `none`, `openai`. |
 | `RERANKER_MODEL` | `gpt-5.4-nano` | Yes for OpenAI reranking | Model used by the OpenAI listwise reranker. |
 | `RERANK_TOP_N` | `5` | No | Number of fused chunks retained after reranking. |

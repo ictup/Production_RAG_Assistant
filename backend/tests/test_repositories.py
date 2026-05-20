@@ -742,6 +742,66 @@ async def test_list_chat_logs_by_session_rejects_invalid_pagination() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_recent_chat_logs_by_session_orders_recent_logs() -> None:
+    session_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+    newer_log = ChatLog(
+        id=uuid.UUID("44444444-4444-4444-4444-444444444444"),
+        request_id="request-newer",
+        workspace_id="tenant-a",
+        session_id=session_id,
+        question="What problem does it solve?",
+        answer="It reduces memory traffic. [1]",
+        sources=[],
+        retrieval={},
+        usage={},
+        refusal=None,
+        citation_valid=True,
+        latency_ms=12,
+    )
+    older_log = ChatLog(
+        id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
+        request_id="request-older",
+        workspace_id="tenant-a",
+        session_id=session_id,
+        question="What is FlashAttention?",
+        answer="FlashAttention is IO-aware attention. [1]",
+        sources=[],
+        retrieval={},
+        usage={},
+        refusal=None,
+        citation_valid=True,
+        latency_ms=12,
+    )
+    session = FakeAsyncSession(scalars_result=[newer_log, older_log])
+    repository = ChatLogRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.list_recent_chat_logs_by_session(
+        session_id=session_id,
+        workspace_id=" tenant-a ",
+        limit=2,
+    )
+
+    assert result == [older_log, newer_log]
+    assert session.scalars_statement is not None
+    compiled = str(session.scalars_statement)
+    assert "chat_logs.workspace_id" in compiled
+    assert "chat_logs.session_id" in compiled
+    assert "ORDER BY chat_logs.created_at DESC" in compiled
+
+
+@pytest.mark.asyncio
+async def test_list_recent_chat_logs_by_session_rejects_invalid_limit() -> None:
+    session = FakeAsyncSession()
+    repository = ChatLogRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="limit"):
+        await repository.list_recent_chat_logs_by_session(
+            session_id=uuid.uuid4(),
+            limit=0,
+        )
+
+
+@pytest.mark.asyncio
 async def test_create_chat_session_adds_session_model() -> None:
     session = FakeAsyncSession()
     repository = ChatSessionRepository(session)  # type: ignore[arg-type]

@@ -15,6 +15,7 @@ from backend.app.rag.generation import Generator, build_generator
 from backend.app.rag.metadata_filters import normalize_metadata_filter
 from backend.app.rag.prompts import build_rag_prompt
 from backend.app.rag.query_rewriting import (
+    ConversationTurn,
     QueryRewriter,
     QueryRewriteResult,
     build_query_rewriter,
@@ -33,6 +34,7 @@ from backend.app.rag.vector_retrieval import VectorRetriever
 class ChatPipelineRequest(BaseModel):
     question: str
     workspace_id: str = "public"
+    chat_history: list[ConversationTurn] = Field(default_factory=list)
     metadata_filter: dict[str, object] = Field(default_factory=dict)
     vector_top_k: int | None = Field(default=None, gt=0)
     sparse_top_k: int | None = Field(default=None, gt=0)
@@ -63,6 +65,7 @@ class QueryRewriteInfo(BaseModel):
     model: str = "none"
     rewritten: bool = False
     retrieval_query: str | None = None
+    history_turn_count: int = 0
 
 
 class RetrievalInfo(BaseModel):
@@ -167,12 +170,14 @@ class RagPipeline:
             {
                 "provider": self.query_rewriter.provider_name,
                 "model": self.query_rewriter.model_name,
+                "history_turn_count": len(request.chat_history),
                 "metadata_filter_keys": sorted(metadata_filter),
             },
         ):
             query_rewrite = await self.query_rewriter.rewrite(
                 question=request.question,
                 metadata_filter=metadata_filter,
+                chat_history=request.chat_history,
             )
             retrieval_query = query_rewrite.rewritten_query
 
@@ -372,12 +377,14 @@ class RagPipeline:
             {
                 "provider": self.query_rewriter.provider_name,
                 "model": self.query_rewriter.model_name,
+                "history_turn_count": len(request.chat_history),
                 "metadata_filter_keys": sorted(metadata_filter),
             },
         ):
             query_rewrite = await self.query_rewriter.rewrite(
                 question=request.question,
                 metadata_filter=metadata_filter,
+                chat_history=request.chat_history,
             )
             retrieval_query = query_rewrite.rewritten_query
 
@@ -595,6 +602,7 @@ def build_query_rewrite_info(
         model=query_rewrite.model_name,
         rewritten=query_rewrite.rewritten,
         retrieval_query=query_rewrite.rewritten_query,
+        history_turn_count=query_rewrite.history_turn_count,
     )
 
 
