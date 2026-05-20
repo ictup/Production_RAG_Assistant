@@ -554,6 +554,56 @@ textarea:focus {
   line-height: 1.35;
 }
 
+.admin-detail {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.admin-detail summary {
+  color: var(--accent-dark);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.admin-detail summary:focus-visible {
+  outline: 2px solid rgba(15, 118, 110, 0.3);
+  outline-offset: 2px;
+}
+
+.admin-detail-grid {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.admin-detail-row {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.admin-detail-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.admin-detail-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-detail-value {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .document-item {
   display: grid;
   gap: 6px;

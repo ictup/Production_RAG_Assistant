@@ -406,10 +406,58 @@ function renderAdminLogs() {
       `request ${log.request_id}`,
     ].join(" / ");
 
+    const detail = buildChatLogAuditDetails(log);
+
     header.append(question, verdict);
-    item.append(header, answer, meta);
+    item.append(header, answer, meta, detail);
     els.adminLogList.append(item);
   }
+}
+
+function buildChatLogAuditDetails(log) {
+  const detail = document.createElement("details");
+  detail.className = "admin-detail";
+
+  const summary = document.createElement("summary");
+  summary.textContent = "Audit details";
+
+  const grid = document.createElement("div");
+  grid.className = "admin-detail-grid";
+
+  appendAdminDetailRow(grid, "Workspace", log.workspace_id || state.workspaceId);
+  appendAdminDetailRow(grid, "Session", log.session_id || "none");
+  appendAdminDetailRow(grid, "Request", log.request_id || "unknown");
+  appendAdminDetailRow(grid, "Citation", formatCitationStatus(log.citation_valid));
+  appendAdminDetailRow(grid, "Sources", `${(log.sources || []).length} source(s)`);
+  appendAdminDetailRow(grid, "Refusal", formatRefusal(log.refusal));
+  appendAdminDetailRow(grid, "Retrieval", formatRetrieval(log.retrieval));
+  appendAdminDetailRow(grid, "Query rewrite", formatQueryRewrite(log.retrieval?.query_rewrite));
+  appendAdminDetailRow(
+    grid,
+    "Metadata filter",
+    formatJsonPreview(log.retrieval?.metadata_filter),
+  );
+  appendAdminDetailRow(grid, "Usage", formatUsage(log.usage));
+  appendAdminDetailRow(grid, "Cost", formatCost(log.usage));
+
+  detail.append(summary, grid);
+  return detail;
+}
+
+function appendAdminDetailRow(grid, label, value) {
+  const row = document.createElement("div");
+  row.className = "admin-detail-row";
+
+  const labelEl = document.createElement("div");
+  labelEl.className = "admin-detail-label";
+  labelEl.textContent = label;
+
+  const valueEl = document.createElement("div");
+  valueEl.className = "admin-detail-value";
+  valueEl.textContent = value || "unknown";
+
+  row.append(labelEl, valueEl);
+  grid.append(row);
 }
 
 function selectWorkspace(workspaceId) {
@@ -735,6 +783,107 @@ function chatLogVerdict(log) {
     return "citation issue";
   }
   return "answered";
+}
+
+function formatCitationStatus(value) {
+  if (value === true) {
+    return "valid";
+  }
+  if (value === false) {
+    return "invalid";
+  }
+  return "not checked";
+}
+
+function formatRefusal(refusal) {
+  if (!refusal) {
+    return "none";
+  }
+  const topScore = refusal.top_score === null ? "n/a" : formatNumber(refusal.top_score);
+  return `${refusal.reason || "refused"} / top ${topScore} / threshold ${formatNumber(
+    refusal.threshold,
+  )}`;
+}
+
+function formatRetrieval(retrieval) {
+  if (!retrieval) {
+    return "none";
+  }
+  return [
+    retrieval.mode || "unknown",
+    `used ${formatInteger(retrieval.used_count)}`,
+    `fused ${formatInteger(retrieval.fused_count)}`,
+    `vector ${formatInteger(retrieval.vector_top_k)}`,
+    `sparse ${formatInteger(retrieval.sparse_top_k)}`,
+    `top ${formatNumber(retrieval.top_score)}`,
+  ].join(" / ");
+}
+
+function formatQueryRewrite(queryRewrite) {
+  if (!queryRewrite) {
+    return "none";
+  }
+  const status = queryRewrite.rewritten ? "rewritten" : "unchanged";
+  const provider = `${queryRewrite.provider || "none"}:${queryRewrite.model || "none"}`;
+  const history = `history ${formatInteger(queryRewrite.history_turn_count)}`;
+  const query = queryRewrite.retrieval_query
+    ? ` / query ${truncateText(queryRewrite.retrieval_query, 80)}`
+    : "";
+  return `${status} / ${provider} / ${history}${query}`;
+}
+
+function formatUsage(usage) {
+  if (!usage) {
+    return "none";
+  }
+  return [
+    `${usage.generator_provider || "unknown"}:${usage.model || "unknown"}`,
+    `input ${formatInteger(usage.input_tokens)}`,
+    `output ${formatInteger(usage.output_tokens)}`,
+    `embedding ${formatInteger(usage.embedding_total_tokens)}`,
+  ].join(" / ");
+}
+
+function formatCost(usage) {
+  if (!usage) {
+    return "none";
+  }
+  const estimated = usage.cost_estimated ? "estimated" : "not estimated";
+  return `${formatCostAmount(usage.total_cost_usd)} ${usage.cost_currency || "USD"} / ${estimated}`;
+}
+
+function formatJsonPreview(value) {
+  if (!value || (typeof value === "object" && !Object.keys(value).length)) {
+    return "{}";
+  }
+  try {
+    return truncateText(JSON.stringify(value), 140);
+  } catch {
+    return truncateText(String(value), 140);
+  }
+}
+
+function formatInteger(value) {
+  return Number.isFinite(Number(value)) ? String(Number(value)) : "0";
+}
+
+function formatNumber(value) {
+  if (value === null || value === undefined) {
+    return "n/a";
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "n/a";
+  }
+  return number.toFixed(4);
+}
+
+function formatCostAmount(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "0.000000";
+  }
+  return number.toFixed(6);
 }
 
 function truncateText(value, maxLength) {

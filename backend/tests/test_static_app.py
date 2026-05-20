@@ -39,6 +39,10 @@ def test_static_app_serves_assets() -> None:
     assert "uploadDocument" in script_response.text
     assert "reindexDocuments" in script_response.text
     assert "loadAdminOverview" in script_response.text
+    assert "buildChatLogAuditDetails" in script_response.text
+    assert "formatRefusal" in script_response.text
+    assert "formatUsage" in script_response.text
+    assert "formatCost" in script_response.text
     assert "/workspaces?limit=20&offset=0" in script_response.text
     assert "/chat/logs?limit=5" in script_response.text
     assert "renderMessageError" in script_response.text
@@ -50,5 +54,7 @@ def test_static_app_serves_assets() -> None:
     assert ".admin-panel" in style_response.text
     assert ".admin-stat" in style_response.text
     assert ".admin-item" in style_response.text
+    assert ".admin-detail" in style_response.text
+    assert ".admin-detail-row" in style_response.text
     assert ".message-error" in style_response.text
     assert ".retry-button" in style_response.text
