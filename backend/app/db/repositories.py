@@ -95,6 +95,12 @@ class CreateWorkspaceResult:
 
 
 @dataclass(frozen=True)
+class BulkWorkspaceOperationResult:
+    workspaces: list[Workspace]
+    missing_ids: list[str]
+
+
+@dataclass(frozen=True)
 class WorkspaceListResult:
     total: int
     workspaces: list[Workspace]
@@ -287,6 +293,54 @@ class WorkspaceRepository:
             await self.session.commit()
         return workspace
 
+    async def archive_workspaces(
+        self,
+        workspace_inputs: Sequence[ArchiveWorkspaceInput],
+        *,
+        commit: bool = False,
+    ) -> BulkWorkspaceOperationResult:
+        workspace_ids: list[str] = []
+        reason_by_id: dict[str, str | None] = {}
+        for workspace_input in workspace_inputs:
+            workspace_id = workspace_input.id.strip()
+            if not workspace_id:
+                raise ValueError("workspace id must not be blank")
+            if workspace_id not in reason_by_id:
+                workspace_ids.append(workspace_id)
+                reason_by_id[workspace_id] = normalize_optional_text(
+                    workspace_input.reason
+                )
+
+        if not workspace_ids:
+            raise ValueError("workspace ids must not be empty")
+
+        statement = select(Workspace).where(Workspace.id.in_(workspace_ids))
+        workspaces = list((await self.session.scalars(statement)).all())
+        workspace_by_id = {workspace.id: workspace for workspace in workspaces}
+        missing_ids = [
+            workspace_id
+            for workspace_id in workspace_ids
+            if workspace_id not in workspace_by_id
+        ]
+        if missing_ids:
+            return BulkWorkspaceOperationResult(workspaces=[], missing_ids=missing_ids)
+
+        archived_at = datetime.now(UTC)
+        updated_workspaces: list[Workspace] = []
+        for workspace_id in workspace_ids:
+            workspace = workspace_by_id[workspace_id]
+            workspace.archived_at = archived_at
+            workspace.archived_reason = reason_by_id[workspace_id]
+            updated_workspaces.append(workspace)
+
+        await self.session.flush()
+        if commit:
+            await self.session.commit()
+        return BulkWorkspaceOperationResult(
+            workspaces=updated_workspaces,
+            missing_ids=[],
+        )
+
     async def restore_workspace(
         self,
         *,
@@ -307,6 +361,51 @@ class WorkspaceRepository:
         if commit:
             await self.session.commit()
         return workspace
+
+    async def restore_workspaces(
+        self,
+        *,
+        workspace_ids: Sequence[str],
+        commit: bool = False,
+    ) -> BulkWorkspaceOperationResult:
+        normalized_ids: list[str] = []
+        seen_ids: set[str] = set()
+        for workspace_id in workspace_ids:
+            normalized_id = workspace_id.strip()
+            if not normalized_id:
+                raise ValueError("workspace id must not be blank")
+            if normalized_id not in seen_ids:
+                normalized_ids.append(normalized_id)
+                seen_ids.add(normalized_id)
+
+        if not normalized_ids:
+            raise ValueError("workspace ids must not be empty")
+
+        statement = select(Workspace).where(Workspace.id.in_(normalized_ids))
+        workspaces = list((await self.session.scalars(statement)).all())
+        workspace_by_id = {workspace.id: workspace for workspace in workspaces}
+        missing_ids = [
+            workspace_id
+            for workspace_id in normalized_ids
+            if workspace_id not in workspace_by_id
+        ]
+        if missing_ids:
+            return BulkWorkspaceOperationResult(workspaces=[], missing_ids=missing_ids)
+
+        restored_workspaces: list[Workspace] = []
+        for workspace_id in normalized_ids:
+            workspace = workspace_by_id[workspace_id]
+            workspace.archived_at = None
+            workspace.archived_reason = None
+            restored_workspaces.append(workspace)
+
+        await self.session.flush()
+        if commit:
+            await self.session.commit()
+        return BulkWorkspaceOperationResult(
+            workspaces=restored_workspaces,
+            missing_ids=[],
+        )
 
 
 class DocumentRepository:

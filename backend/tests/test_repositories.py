@@ -171,9 +171,9 @@ def make_chat_session_model() -> ChatSession:
     )
 
 
-def make_workspace_model() -> Workspace:
+def make_workspace_model(*, workspace_id: str = "tenant-a") -> Workspace:
     return Workspace(
-        id="tenant-a",
+        id=workspace_id,
         name="Tenant A",
         description="GPU systems team",
         metadata_={"tier": "internal"},
@@ -448,6 +448,55 @@ async def test_archive_workspace_returns_none_for_missing_workspace() -> None:
 
 
 @pytest.mark.asyncio
+async def test_archive_workspaces_archives_records_in_one_commit() -> None:
+    workspace_a = make_workspace_model(workspace_id="tenant-a")
+    workspace_b = make_workspace_model(workspace_id="tenant-b")
+    session = FakeAsyncSession(scalars_result=[workspace_b, workspace_a])
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.archive_workspaces(
+        [
+            ArchiveWorkspaceInput(id=" tenant-a ", reason=" Cleanup "),
+            ArchiveWorkspaceInput(id="tenant-b", reason=" Cleanup "),
+            ArchiveWorkspaceInput(id="tenant-a", reason="Duplicate"),
+        ],
+        commit=True,
+    )
+
+    assert result.missing_ids == []
+    assert [workspace.id for workspace in result.workspaces] == ["tenant-a", "tenant-b"]
+    assert workspace_a.archived_at is not None
+    assert workspace_b.archived_at is not None
+    assert workspace_a.archived_reason == "Cleanup"
+    assert workspace_b.archived_reason == "Cleanup"
+    assert session.flushed is True
+    assert session.committed is True
+    assert session.scalars_statement is not None
+    assert "workspaces.id" in str(session.scalars_statement)
+
+
+@pytest.mark.asyncio
+async def test_archive_workspaces_returns_missing_ids_without_writing() -> None:
+    workspace = make_workspace_model(workspace_id="tenant-a")
+    session = FakeAsyncSession(scalars_result=[workspace])
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.archive_workspaces(
+        [
+            ArchiveWorkspaceInput(id="tenant-a", reason="Cleanup"),
+            ArchiveWorkspaceInput(id="tenant-missing", reason="Cleanup"),
+        ],
+        commit=True,
+    )
+
+    assert result.workspaces == []
+    assert result.missing_ids == ["tenant-missing"]
+    assert workspace.archived_at is None
+    assert session.flushed is False
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
 async def test_restore_workspace_clears_archive_fields() -> None:
     workspace = make_workspace_model()
     workspace.archived_at = datetime(2026, 5, 20, 8, 0, tzinfo=UTC)
@@ -475,6 +524,53 @@ async def test_restore_workspace_returns_none_for_missing_workspace() -> None:
     result = await repository.restore_workspace(workspace_id="tenant-a")
 
     assert result is None
+    assert session.flushed is False
+    assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_restore_workspaces_restores_records_in_one_commit() -> None:
+    workspace_a = make_workspace_model(workspace_id="tenant-a")
+    workspace_b = make_workspace_model(workspace_id="tenant-b")
+    workspace_a.archived_at = datetime(2026, 5, 20, 8, 0, tzinfo=UTC)
+    workspace_a.archived_reason = "Cleanup"
+    workspace_b.archived_at = datetime(2026, 5, 20, 8, 0, tzinfo=UTC)
+    workspace_b.archived_reason = "Cleanup"
+    session = FakeAsyncSession(scalars_result=[workspace_b, workspace_a])
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.restore_workspaces(
+        workspace_ids=[" tenant-a ", "tenant-b", "tenant-a"],
+        commit=True,
+    )
+
+    assert result.missing_ids == []
+    assert [workspace.id for workspace in result.workspaces] == ["tenant-a", "tenant-b"]
+    assert workspace_a.archived_at is None
+    assert workspace_a.archived_reason is None
+    assert workspace_b.archived_at is None
+    assert workspace_b.archived_reason is None
+    assert session.flushed is True
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_restore_workspaces_returns_missing_ids_without_writing() -> None:
+    workspace = make_workspace_model(workspace_id="tenant-a")
+    workspace.archived_at = datetime(2026, 5, 20, 8, 0, tzinfo=UTC)
+    workspace.archived_reason = "Cleanup"
+    session = FakeAsyncSession(scalars_result=[workspace])
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.restore_workspaces(
+        workspace_ids=["tenant-a", "tenant-missing"],
+        commit=True,
+    )
+
+    assert result.workspaces == []
+    assert result.missing_ids == ["tenant-missing"]
+    assert workspace.archived_at is not None
+    assert workspace.archived_reason == "Cleanup"
     assert session.flushed is False
     assert session.committed is False
 

@@ -7,6 +7,7 @@ from backend.app.core.config import Settings, get_settings
 from backend.app.db.models import Workspace
 from backend.app.db.repositories import (
     ArchiveWorkspaceInput,
+    BulkWorkspaceOperationResult,
     CreateWorkspaceInput,
     CreateWorkspaceResult,
     UpdateWorkspaceInput,
@@ -24,6 +25,7 @@ class FakeWorkspaceRepository:
         create_result: CreateWorkspaceResult | None = None,
         list_result: WorkspaceListResult | None = None,
         detail_workspace: Workspace | None = None,
+        bulk_missing_ids: list[str] | None = None,
     ) -> None:
         self.create_result = create_result or CreateWorkspaceResult(
             workspace=make_workspace_model(),
@@ -34,10 +36,13 @@ class FakeWorkspaceRepository:
             workspaces=[],
         )
         self.detail_workspace = detail_workspace
+        self.bulk_missing_ids = bulk_missing_ids or []
         self.create_calls: list[tuple[CreateWorkspaceInput, bool]] = []
         self.update_calls: list[tuple[UpdateWorkspaceInput, bool]] = []
         self.archive_calls: list[tuple[ArchiveWorkspaceInput, bool]] = []
+        self.bulk_archive_calls: list[tuple[list[ArchiveWorkspaceInput], bool]] = []
         self.restore_calls: list[tuple[str, bool]] = []
+        self.bulk_restore_calls: list[tuple[list[str], bool]] = []
         self.list_calls: list[
             tuple[frozenset[str] | None, int, int, str | None, bool | None]
         ] = []
@@ -98,6 +103,26 @@ class FakeWorkspaceRepository:
         self.detail_workspace.archived_reason = workspace_input.reason
         return self.detail_workspace
 
+    async def archive_workspaces(
+        self,
+        workspace_inputs: list[ArchiveWorkspaceInput],
+        *,
+        commit: bool = False,
+    ) -> BulkWorkspaceOperationResult:
+        self.bulk_archive_calls.append((list(workspace_inputs), commit))
+        if self.bulk_missing_ids:
+            return BulkWorkspaceOperationResult(
+                workspaces=[],
+                missing_ids=self.bulk_missing_ids,
+            )
+        workspaces = []
+        for workspace_input in workspace_inputs:
+            workspace = make_workspace_model(workspace_id=workspace_input.id)
+            workspace.archived_at = datetime(2026, 5, 20, 8, 0, tzinfo=UTC)
+            workspace.archived_reason = workspace_input.reason
+            workspaces.append(workspace)
+        return BulkWorkspaceOperationResult(workspaces=workspaces, missing_ids=[])
+
     async def restore_workspace(
         self,
         *,
@@ -111,10 +136,30 @@ class FakeWorkspaceRepository:
         self.detail_workspace.archived_reason = None
         return self.detail_workspace
 
+    async def restore_workspaces(
+        self,
+        *,
+        workspace_ids: list[str],
+        commit: bool = False,
+    ) -> BulkWorkspaceOperationResult:
+        self.bulk_restore_calls.append((list(workspace_ids), commit))
+        if self.bulk_missing_ids:
+            return BulkWorkspaceOperationResult(
+                workspaces=[],
+                missing_ids=self.bulk_missing_ids,
+            )
+        return BulkWorkspaceOperationResult(
+            workspaces=[
+                make_workspace_model(workspace_id=workspace_id)
+                for workspace_id in workspace_ids
+            ],
+            missing_ids=[],
+        )
 
-def make_workspace_model() -> Workspace:
+
+def make_workspace_model(*, workspace_id: str = "tenant-a") -> Workspace:
     return Workspace(
-        id="tenant-a",
+        id=workspace_id,
         name="Tenant A",
         description="GPU systems team",
         metadata_={"tier": "internal"},
@@ -500,6 +545,81 @@ def test_archive_workspace_route_rejects_forbidden_workspace() -> None:
     assert fake_repository.archive_calls == []
 
 
+def test_bulk_archive_workspaces_route_archives_workspaces() -> None:
+    fake_repository = FakeWorkspaceRepository()
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/bulk/archive",
+        headers=AUTH_HEADERS,
+        json={
+            "ids": [" tenant-a ", "tenant-b", "tenant-a"],
+            "reason": " Cleanup ",
+        },
+    )
+
+    assert response.status_code == 200
+    workspace_inputs, commit = fake_repository.bulk_archive_calls[0]
+    assert [workspace_input.id for workspace_input in workspace_inputs] == [
+        "tenant-a",
+        "tenant-b",
+    ]
+    assert [workspace_input.reason for workspace_input in workspace_inputs] == [
+        "Cleanup",
+        "Cleanup",
+    ]
+    assert commit is True
+    body = response.json()
+    assert body["action"] == "archive"
+    assert body["requested_count"] == 2
+    assert body["updated_count"] == 2
+    assert [workspace["id"] for workspace in body["workspaces"]] == [
+        "tenant-a",
+        "tenant-b",
+    ]
+
+
+def test_bulk_archive_workspaces_route_rejects_forbidden_workspace() -> None:
+    fake_repository = FakeWorkspaceRepository()
+    client = build_client(
+        fake_repository,
+        settings=Settings(
+            api_keys="tenant-key",
+            api_key_workspace_access="tenant-key=tenant-a",
+        ),
+    )
+
+    response = client.post(
+        "/workspaces/bulk/archive",
+        headers={"Authorization": "Bearer tenant-key"},
+        json={"ids": ["tenant-a", "tenant-b"]},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "workspace access denied"}
+    assert fake_repository.bulk_archive_calls == []
+
+
+def test_bulk_archive_workspaces_route_returns_missing_workspace_ids() -> None:
+    fake_repository = FakeWorkspaceRepository(bulk_missing_ids=["tenant-missing"])
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/bulk/archive",
+        headers=AUTH_HEADERS,
+        json={"ids": ["tenant-a", "tenant-missing"]},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": {
+            "message": "workspace not found",
+            "workspace_ids": ["tenant-missing"],
+        }
+    }
+    assert fake_repository.bulk_archive_calls
+
+
 def test_restore_workspace_route_restores_workspace() -> None:
     workspace = make_workspace_model()
     workspace.archived_at = datetime(2026, 5, 20, 8, 0, tzinfo=UTC)
@@ -526,6 +646,65 @@ def test_restore_workspace_route_returns_404_for_missing_workspace() -> None:
     assert fake_repository.restore_calls == [("tenant-a", True)]
 
 
+def test_bulk_restore_workspaces_route_restores_workspaces() -> None:
+    fake_repository = FakeWorkspaceRepository()
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/bulk/restore",
+        headers=AUTH_HEADERS,
+        json={"ids": [" tenant-a ", "tenant-b", "tenant-a"]},
+    )
+
+    assert response.status_code == 200
+    workspace_ids, commit = fake_repository.bulk_restore_calls[0]
+    assert workspace_ids == ["tenant-a", "tenant-b"]
+    assert commit is True
+    body = response.json()
+    assert body["action"] == "restore"
+    assert body["requested_count"] == 2
+    assert body["updated_count"] == 2
+    assert [workspace["id"] for workspace in body["workspaces"]] == [
+        "tenant-a",
+        "tenant-b",
+    ]
+    assert body["workspaces"][0]["archived_at"] is None
+
+
+def test_bulk_restore_workspaces_route_returns_missing_workspace_ids() -> None:
+    fake_repository = FakeWorkspaceRepository(bulk_missing_ids=["tenant-missing"])
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/bulk/restore",
+        headers=AUTH_HEADERS,
+        json={"ids": ["tenant-a", "tenant-missing"]},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": {
+            "message": "workspace not found",
+            "workspace_ids": ["tenant-missing"],
+        }
+    }
+    assert fake_repository.bulk_restore_calls
+
+
+def test_bulk_workspace_routes_reject_empty_ids() -> None:
+    fake_repository = FakeWorkspaceRepository()
+    client = build_client(fake_repository)
+
+    response = client.post(
+        "/workspaces/bulk/archive",
+        headers=AUTH_HEADERS,
+        json={"ids": []},
+    )
+
+    assert response.status_code == 422
+    assert fake_repository.bulk_archive_calls == []
+
+
 def test_workspaces_routes_require_api_key() -> None:
     fake_repository = FakeWorkspaceRepository()
     client = build_client(fake_repository)
@@ -548,5 +727,7 @@ def test_openapi_exposes_workspace_routes() -> None:
     assert "/workspaces" in paths
     assert "/workspaces/{workspace_id}" in paths
     assert "patch" in paths["/workspaces/{workspace_id}"]
+    assert "/workspaces/bulk/archive" in paths
+    assert "/workspaces/bulk/restore" in paths
     assert "/workspaces/{workspace_id}/archive" in paths
     assert "/workspaces/{workspace_id}/restore" in paths

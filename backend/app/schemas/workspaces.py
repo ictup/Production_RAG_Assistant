@@ -1,10 +1,16 @@
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, field_validator
 
 from backend.app.db.models import Workspace
-from backend.app.db.repositories import CreateWorkspaceResult, WorkspaceListResult
+from backend.app.db.repositories import (
+    BulkWorkspaceOperationResult,
+    CreateWorkspaceResult,
+    WorkspaceListResult,
+)
+
+WorkspaceId = Annotated[str, Field(min_length=1, max_length=128)]
 
 
 class CreateWorkspaceRequest(BaseModel):
@@ -54,6 +60,48 @@ class ArchiveWorkspaceRequest(BaseModel):
             return None
         value = value.strip()
         return value or None
+
+
+class BulkArchiveWorkspacesRequest(BaseModel):
+    ids: list[WorkspaceId] = Field(min_length=1, max_length=100)
+    reason: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("ids")
+    @classmethod
+    def workspace_ids_must_be_unique(cls, values: list[str]) -> list[str]:
+        return normalize_workspace_ids(values)
+
+    @field_validator("reason")
+    @classmethod
+    def optional_reason_must_be_trimmed(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class BulkRestoreWorkspacesRequest(BaseModel):
+    ids: list[WorkspaceId] = Field(min_length=1, max_length=100)
+
+    @field_validator("ids")
+    @classmethod
+    def workspace_ids_must_be_unique(cls, values: list[str]) -> list[str]:
+        return normalize_workspace_ids(values)
+
+
+def normalize_workspace_ids(values: list[str]) -> list[str]:
+    normalized_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for value in values:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("workspace id must not be blank")
+        if len(normalized) > 128:
+            raise ValueError("workspace id must be 128 characters or fewer")
+        if normalized not in seen_ids:
+            normalized_ids.append(normalized)
+            seen_ids.add(normalized)
+    return normalized_ids
 
 
 class WorkspaceItem(BaseModel):
@@ -125,3 +173,28 @@ class WorkspaceResponse(BaseModel):
     @classmethod
     def from_model(cls, workspace: Workspace) -> "WorkspaceResponse":
         return cls(workspace=WorkspaceItem.from_model(workspace))
+
+
+class BulkWorkspaceOperationResponse(BaseModel):
+    action: str
+    requested_count: int = Field(ge=0)
+    updated_count: int = Field(ge=0)
+    workspaces: list[WorkspaceItem]
+
+    @classmethod
+    def from_result(
+        cls,
+        *,
+        action: str,
+        requested_count: int,
+        result: BulkWorkspaceOperationResult,
+    ) -> "BulkWorkspaceOperationResponse":
+        workspaces = [
+            WorkspaceItem.from_model(workspace) for workspace in result.workspaces
+        ]
+        return cls(
+            action=action,
+            requested_count=requested_count,
+            updated_count=len(workspaces),
+            workspaces=workspaces,
+        )

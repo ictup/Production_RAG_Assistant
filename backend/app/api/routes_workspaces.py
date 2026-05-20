@@ -12,6 +12,9 @@ from backend.app.db.repositories import (
 )
 from backend.app.schemas.workspaces import (
     ArchiveWorkspaceRequest,
+    BulkArchiveWorkspacesRequest,
+    BulkRestoreWorkspacesRequest,
+    BulkWorkspaceOperationResponse,
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
     UpdateWorkspaceRequest,
@@ -84,6 +87,79 @@ def workspace_status_to_archived_filter(
     if workspace_status == "archived":
         return True
     return None
+
+
+@router.post(
+    "/workspaces/bulk/archive",
+    response_model=BulkWorkspaceOperationResponse,
+)
+async def archive_workspaces(
+    request: BulkArchiveWorkspacesRequest,
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
+    repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
+) -> BulkWorkspaceOperationResponse:
+    workspace_ids = resolve_bulk_workspace_ids(principal, request.ids)
+    result = await repository.archive_workspaces(
+        [
+            ArchiveWorkspaceInput(id=workspace_id, reason=request.reason)
+            for workspace_id in workspace_ids
+        ],
+        commit=True,
+    )
+    raise_for_missing_bulk_workspaces(result.missing_ids)
+    return BulkWorkspaceOperationResponse.from_result(
+        action="archive",
+        requested_count=len(workspace_ids),
+        result=result,
+    )
+
+
+@router.post(
+    "/workspaces/bulk/restore",
+    response_model=BulkWorkspaceOperationResponse,
+)
+async def restore_workspaces(
+    request: BulkRestoreWorkspacesRequest,
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
+    repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
+) -> BulkWorkspaceOperationResponse:
+    workspace_ids = resolve_bulk_workspace_ids(principal, request.ids)
+    result = await repository.restore_workspaces(
+        workspace_ids=workspace_ids,
+        commit=True,
+    )
+    raise_for_missing_bulk_workspaces(result.missing_ids)
+    return BulkWorkspaceOperationResponse.from_result(
+        action="restore",
+        requested_count=len(workspace_ids),
+        result=result,
+    )
+
+
+def resolve_bulk_workspace_ids(
+    principal: ApiPrincipal,
+    workspace_ids: list[str],
+) -> list[str]:
+    resolved_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for workspace_id in workspace_ids:
+        resolved_id = resolve_workspace_id(principal, workspace_id)
+        if resolved_id not in seen_ids:
+            resolved_ids.append(resolved_id)
+            seen_ids.add(resolved_id)
+    return resolved_ids
+
+
+def raise_for_missing_bulk_workspaces(missing_ids: list[str]) -> None:
+    if not missing_ids:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "message": "workspace not found",
+            "workspace_ids": missing_ids,
+        },
+    )
 
 
 @router.get("/workspaces/{workspace_id}", response_model=WorkspaceResponse)

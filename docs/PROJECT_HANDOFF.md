@@ -75,6 +75,8 @@ docs/EVAL_TRENDS.md
 - workspace 更新接口：`PATCH /workspaces/{workspace_id}`
 - workspace 软归档接口：`POST /workspaces/{workspace_id}/archive`
 - workspace 恢复接口：`POST /workspaces/{workspace_id}/restore`
+- workspace 批量软归档接口：`POST /workspaces/bulk/archive`
+- workspace 批量恢复接口：`POST /workspaces/bulk/restore`
 - workspace 归档写保护：归档 workspace 仍可读，但写入型接口返回 `409 workspace archived`
 - workspace 列表接口：`GET /workspaces`
 - workspace 详情接口：`GET /workspaces/{workspace_id}`
@@ -593,6 +595,24 @@ curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/archive `
 ```powershell
 curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/restore `
   -H "Authorization: Bearer dev-key"
+```
+
+批量软归档 workspace：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/workspaces/bulk/archive `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -d "{\"ids\":[\"tenant-a\",\"tenant-b\"],\"reason\":\"temporary cleanup\"}"
+```
+
+批量恢复 workspace：
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/workspaces/bulk/restore `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -d "{\"ids\":[\"tenant-a\",\"tenant-b\"]}"
 ```
 
 归档 workspace 仍可用于查询、审计和恢复，但写入型接口会返回 `409 workspace archived`。当前受保护的写入路径包括：
@@ -1235,10 +1255,11 @@ Completed: 2026-05-20T09:51:56Z
 - workspace 列表状态过滤已完成：`GET /workspaces?status=all|active|archived` 会按 `archived_at` 做后端过滤，Admin overview 支持 All / Active / Archived 全量过滤。
 - workspace 列表分页基础版已完成：Admin overview 使用 `/workspaces?limit&offset` 做 Previous/Next 翻页。
 - workspace 搜索基础版已完成：`GET /workspaces?q=...` 会按 workspace ID、name 和 description 过滤，Admin overview 可搜索并重置分页。
+- workspace 批量操作 API 基础版已完成：`POST /workspaces/bulk/archive` 和 `POST /workspaces/bulk/restore` 支持一次请求处理多个 workspace，缺失 workspace 会返回 missing id 列表。
 - chat log 审计过滤基础版已完成：`GET /chat/logs` 支持 `offset`、`session_id`、`request_id`、`refusal_only`、`citation_valid`，Admin overview 支持对应筛选和 Previous/Next 翻页。
 - chat log 审计导出基础版已完成：`GET /chat/logs/export` 支持同一组过滤参数，可导出 JSONL 或 CSV，Admin overview 可按当前过滤条件触发下载。
 - chat log 审计详情基础版已完成：每条最近日志可展开查看 session、request、citation、sources、refusal、retrieval、query rewrite、metadata filter、usage 和 cost。
-- 完整管理后台仍未完成：还缺少用户/角色/组织管理、workspace 批量操作、导出任务异步化/大文件存储、批量运维操作和权限分层 UI。
+- 完整管理后台仍未完成：还缺少用户/角色/组织管理、workspace 批量操作 UI、导出任务异步化/大文件存储、批量运维操作和权限分层 UI。
 
 ### 生产部署
 
@@ -1352,20 +1373,21 @@ OPENAI_API_KEY
 19. workspace 列表分页基础版。已完成。
 20. workspace 搜索基础版。已完成。
 21. workspace 后端状态过滤。已完成。
+22. workspace 批量操作 API 基础版。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-workspace 批量操作基础版
+workspace 批量操作 UI 基础版
 ```
 
 原因：
 
-- workspace 归档/恢复 API、Admin UI、后端写保护、前端写入禁用、状态过滤、分页、搜索和后端状态过滤已完成。
-- 当前 workspace 管理仍以单个 workspace 操作为主。
-- 下一步可以做 workspace 批量操作基础版，例如在 Admin overview 中选择多个 workspace 后批量 archive 或 restore。
+- workspace 归档/恢复 API、后端写保护、前端写入禁用、状态过滤、分页、搜索、后端状态过滤和批量操作 API 已完成。
+- 当前 Admin overview 仍没有多选控件，批量 API 只能通过 HTTP 客户端调用。
+- 下一步可以在 Admin overview 中增加 workspace 多选和批量 archive / restore 按钮。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

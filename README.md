@@ -14,7 +14,7 @@ real provider key is available.
 - FastAPI API for chat, streaming chat, documents, workspaces, sessions,
   health, and metrics.
 - Workspace management API with create, update, list, detail, soft archive,
-  and restore operations.
+  bulk archive, restore, and bulk restore operations.
 - Postgres + pgvector schema with Alembic migrations.
 - Markdown ingestion, chunking, content hashing, fake embeddings, OpenAI
   embeddings, and reindexing.
@@ -233,6 +233,20 @@ curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/archive `
 
 curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/restore `
   -H "Authorization: Bearer dev-key"
+```
+
+Bulk archive and restore workspaces:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/workspaces/bulk/archive `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -d "{\"ids\":[\"tenant-a\",\"tenant-b\"],\"reason\":\"temporary cleanup\"}"
+
+curl.exe -X POST http://127.0.0.1:8000/workspaces/bulk/restore `
+  -H "Authorization: Bearer dev-key" `
+  -H "Content-Type: application/json" `
+  -d "{\"ids\":[\"tenant-a\",\"tenant-b\"]}"
 ```
 
 Archived workspaces remain readable for audit and recovery, but write-oriented
