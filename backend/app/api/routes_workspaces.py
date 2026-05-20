@@ -4,7 +4,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
-from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
+from backend.app.api.security import (
+    ApiPrincipal,
+    require_api_key,
+    require_api_role,
+    resolve_workspace_id,
+)
 from backend.app.api.workspace_validation import get_workspace_repository
 from backend.app.core.request_id import get_request_id
 from backend.app.db.repositories import (
@@ -46,6 +51,7 @@ async def create_workspace(
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> CreateWorkspaceResponse:
+    require_api_role(principal, "admin")
     workspace_id = resolve_workspace_id(principal, request.id)
     result = await repository.create_workspace(
         CreateWorkspaceInput(
@@ -177,6 +183,7 @@ async def archive_matching_workspaces(
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> BulkWorkspaceOperationResponse:
+    require_api_role(principal, "admin")
     matching_result = await load_confirmed_matching_workspaces(
         request=request,
         principal=principal,
@@ -230,6 +237,7 @@ async def restore_matching_workspaces(
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> BulkWorkspaceOperationResponse:
+    require_api_role(principal, "admin")
     matching_result = await load_confirmed_matching_workspaces(
         request=request,
         principal=principal,
@@ -312,6 +320,7 @@ async def archive_workspaces(
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> BulkWorkspaceOperationResponse:
+    require_api_role(principal, "admin")
     workspace_ids = resolve_bulk_workspace_ids(principal, request.ids)
     result = await repository.archive_workspaces(
         [
@@ -351,6 +360,7 @@ async def restore_workspaces(
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> BulkWorkspaceOperationResponse:
+    require_api_role(principal, "admin")
     workspace_ids = resolve_bulk_workspace_ids(principal, request.ids)
     result = await repository.restore_workspaces(
         workspace_ids=workspace_ids,
@@ -451,6 +461,7 @@ async def update_workspace(
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> WorkspaceResponse:
+    require_api_role(principal, "admin")
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     updated_workspace = await repository.update_workspace(
         UpdateWorkspaceInput(
@@ -480,6 +491,7 @@ async def archive_workspace(
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
     request: ArchiveWorkspaceRequest | None = None,
 ) -> WorkspaceResponse:
+    require_api_role(principal, "admin")
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     archived_workspace = await repository.archive_workspace(
         ArchiveWorkspaceInput(
@@ -515,6 +527,7 @@ async def restore_workspace(
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> WorkspaceResponse:
+    require_api_role(principal, "admin")
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     restored_workspace = await repository.restore_workspace(
         workspace_id=normalized_workspace_id,

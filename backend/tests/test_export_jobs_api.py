@@ -236,6 +236,27 @@ def test_create_export_job_creates_pending_job_for_workspace() -> None:
     assert body["status"] == "pending"
 
 
+def test_create_export_job_requires_operator_role() -> None:
+    fake_export_job_repository = FakeExportJobRepository()
+    client = build_client(
+        fake_export_job_repository,
+        settings=Settings(
+            api_keys="viewer-key",
+            api_key_roles="viewer-key=viewer",
+        ),
+    )
+
+    response = client.post(
+        "/exports/jobs",
+        headers={"Authorization": "Bearer viewer-key"},
+        json={"export_type": "chat_logs", "format": "csv", "filters": {}},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "insufficient api role"}
+    assert fake_export_job_repository.create_calls == []
+
+
 def test_create_export_job_defaults_to_public_workspace_and_jsonl() -> None:
     fake_export_job_repository = FakeExportJobRepository()
     fake_workspace_repository = FakeWorkspaceRepository(

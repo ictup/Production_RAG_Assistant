@@ -25,6 +25,7 @@ Store these values in a secret manager or platform secret store:
 | Variable | Why it is secret | Notes |
 | --- | --- | --- |
 | `API_KEYS` | Contains Bearer tokens accepted by the API. | Use long random tokens. In production, do not use `dev-key` or short placeholders. |
+| `API_KEY_ROLES` | Contains API key values as the left side of the role mapping. | Use `admin`, `operator`, or `viewer`. Keep it secret because it repeats token material. |
 | `API_KEY_WORKSPACE_ACCESS` | Contains API key values as the left side of the mapping. | Required when keys should be scoped to specific workspaces. Keep it secret because it repeats token material. |
 | `POSTGRES_PASSWORD` | Database password used by Compose-managed Postgres. | For managed databases, the password is usually embedded in the database URLs instead. |
 | `DATABASE_URL` | Contains database username, password, host, and database name. | Runtime async database URL used by the API and worker. |
@@ -89,11 +90,13 @@ tokens:
 
 1. Generate a new long random API token.
 2. Add the new token to `API_KEYS`.
-3. Add or update the matching `API_KEY_WORKSPACE_ACCESS` entry.
-4. Deploy and run `uv run python -m backend.app.core.config_check --production`.
-5. Move clients to the new token.
-6. Remove the old token from `API_KEYS` and `API_KEY_WORKSPACE_ACCESS`.
-7. Deploy again and verify authenticated API smoke tests.
+3. Add or update the matching `API_KEY_ROLES` entry.
+4. Add or update the matching `API_KEY_WORKSPACE_ACCESS` entry.
+5. Deploy and run `uv run python -m backend.app.core.config_check --production`.
+6. Move clients to the new token.
+7. Remove the old token from `API_KEYS`, `API_KEY_ROLES`, and
+   `API_KEY_WORKSPACE_ACCESS`.
+8. Deploy again and verify authenticated API smoke tests.
 
 Rotate `OPENAI_API_KEY` by updating the managed secret, redeploying, and running
 the provider smoke commands from `docs/PROJECT_HANDOFF.md`.

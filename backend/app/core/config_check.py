@@ -10,6 +10,7 @@ OPENAI_PROVIDERS = {
     "reranker_provider": "openai",
 }
 INSECURE_API_KEYS = {"dev-key", "changeme", "change-me", "test", "password"}
+VALID_API_ROLES = {"admin", "operator", "viewer"}
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ def check_settings(
     report = ConfigCheckReport(mode="production" if production_mode else "local")
 
     _check_api_keys(settings, report=report, production_mode=production_mode)
+    _check_api_key_roles(settings, report=report, production_mode=production_mode)
     _check_openai_requirements(settings, report=report)
     _check_browser_boundary(settings, report=report)
     if production_mode:
@@ -113,6 +115,39 @@ def _check_openai_requirements(
                 variable="OPENAI_API_KEY",
                 message=(
                     "OPENAI_API_KEY is required when any OpenAI provider is enabled"
+                ),
+            )
+        )
+
+
+def _check_api_key_roles(
+    settings: Settings,
+    *,
+    report: ConfigCheckReport,
+    production_mode: bool,
+) -> None:
+    try:
+        role_mapping = parse_api_key_roles(settings.api_key_roles)
+    except ValueError:
+        report.issues.append(
+            ConfigCheckIssue(
+                level="error",
+                variable="API_KEY_ROLES",
+                message=(
+                    "API_KEY_ROLES entries must use api-key=admin|operator|viewer"
+                ),
+            )
+        )
+        return
+
+    if production_mode and not role_mapping:
+        report.issues.append(
+            ConfigCheckIssue(
+                level="warning",
+                variable="API_KEY_ROLES",
+                message=(
+                    "production deployments should explicitly map API keys "
+                    "to admin, operator, or viewer roles"
                 ),
             )
         )
@@ -195,6 +230,21 @@ def _check_production_observability(
 
 def split_csv(raw_value: str) -> list[str]:
     return [item.strip() for item in raw_value.split(",") if item.strip()]
+
+
+def parse_api_key_roles(raw_roles: str) -> dict[str, str]:
+    roles_by_key: dict[str, str] = {}
+    for entry in raw_roles.split(";"):
+        entry = entry.strip()
+        if not entry:
+            continue
+
+        api_key, separator, raw_role = entry.partition("=")
+        role = raw_role.strip().lower()
+        if separator == "" or not api_key.strip() or role not in VALID_API_ROLES:
+            raise ValueError("invalid API key role mapping")
+        roles_by_key[api_key.strip()] = role
+    return roles_by_key
 
 
 def is_nonblank(value: str | None) -> bool:

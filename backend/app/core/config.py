@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     env: str = "local"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     api_keys: str = "dev-key"
+    api_key_roles: str = ""
     api_key_workspace_access: str = ""
     database_url: str = "postgresql+asyncpg://rag:rag@localhost:5432/rag"
     sync_database_url: str = "postgresql+psycopg://rag:rag@localhost:5432/rag"

@@ -47,6 +47,7 @@ def test_config_check_accepts_stronger_production_api_key() -> None:
         make_settings(
             env="production",
             api_keys="prod-token-1234567890",
+            api_key_roles="prod-token-1234567890=admin",
             api_key_workspace_access="prod-token-1234567890=public",
             database_url="postgresql+asyncpg://u:p@postgres:5432/rag",
             sync_database_url="postgresql+psycopg://u:p@postgres:5432/rag",
@@ -71,6 +72,7 @@ def test_config_check_reports_production_warnings() -> None:
 
     assert report.passed is True
     assert {issue.variable for issue in report.warnings} == {
+        "API_KEY_ROLES",
         "API_KEY_WORKSPACE_ACCESS",
         "DATABASE_URL",
         "RATE_LIMIT_ENABLED",
@@ -88,6 +90,15 @@ def test_config_check_rejects_wildcard_cors_credentials() -> None:
 
     assert report.passed is False
     assert [issue.variable for issue in report.errors] == ["CORS_ALLOW_CREDENTIALS"]
+
+
+def test_config_check_rejects_invalid_api_key_role_mapping() -> None:
+    report = check_settings(
+        make_settings(api_key_roles="dev-key=owner"),
+    )
+
+    assert report.passed is False
+    assert [issue.variable for issue in report.errors] == ["API_KEY_ROLES"]
 
 
 def test_config_check_can_force_production_mode() -> None:

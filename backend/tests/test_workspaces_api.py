@@ -319,6 +319,27 @@ def test_create_workspace_route_returns_200_for_existing_workspace() -> None:
     assert response.json()["created"] is False
 
 
+def test_create_workspace_route_requires_admin_role() -> None:
+    fake_repository = FakeWorkspaceRepository()
+    client = build_client(
+        fake_repository,
+        settings=Settings(
+            api_keys="viewer-key",
+            api_key_roles="viewer-key=viewer",
+        ),
+    )
+
+    response = client.post(
+        "/workspaces",
+        headers={"Authorization": "Bearer viewer-key"},
+        json={"id": "tenant-a"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "insufficient api role"}
+    assert fake_repository.create_calls == []
+
+
 def test_create_workspace_route_rejects_forbidden_workspace() -> None:
     fake_repository = FakeWorkspaceRepository()
     client = build_client(

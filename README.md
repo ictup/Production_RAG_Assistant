@@ -156,7 +156,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `579 passed`.
+Current local baseline: `593 passed`.
 
 ## Configuration Model
 
@@ -177,6 +177,7 @@ GENERATOR_PROVIDER=fake
 QUERY_REWRITER_PROVIDER=none
 RERANKER_PROVIDER=none
 API_KEYS=dev-key
+API_KEY_ROLES=
 ```
 
 Enable real OpenAI-compatible providers only when `OPENAI_API_KEY` is set:

@@ -345,8 +345,22 @@ QUERY_CONTEXT_HISTORY_LIMIT=4
 RERANKER_PROVIDER=none
 RERANKER_MODEL=gpt-5.4-nano
 API_KEYS=dev-key
+API_KEY_ROLES=
 API_KEY_WORKSPACE_ACCESS=
 ```
+
+`API_KEY_ROLES` 为空时，为了兼容本地开发，所有已配置 API key 都拥有
+`admin` 权限。生产环境应显式配置：
+
+```text
+API_KEY_ROLES=admin-key=admin;operator-key=operator;viewer-key=viewer
+```
+
+角色边界：
+
+- `viewer`：读取 workspace、documents、chat logs、audit logs 和 export job。
+- `operator`：包含 viewer，并可 chat、创建 session、上传/删除/reindex 文档、创建和重试 export job。
+- `admin`：包含 operator，并可创建/更新 workspace、归档/恢复和执行 workspace 批量操作。
 
 `API_KEY_WORKSPACE_ACCESS` 为空时，所有已配置 API key 都可以访问所有 workspace。配置后格式为：
 
@@ -938,7 +952,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-579 passed
+593 passed
 ```
 
 ### Pipeline Smoke
@@ -1356,6 +1370,7 @@ Completed: 2026-05-20T09:51:56Z
 - CORS 策略已完成：默认关闭，通过 `CORS_ALLOWED_ORIGINS` 或 `CORS_ALLOWED_ORIGIN_REGEX` 显式开启。
 - rate limit 已完成：默认关闭，通过 `RATE_LIMIT_ENABLED` 显式开启。
 - API key 到 workspace 的访问控制已完成：`API_KEY_WORKSPACE_ACCESS`、`ApiPrincipal`、越权返回 403。
+- API key 角色分层基础版已完成：`API_KEY_ROLES` 支持 `admin`、`operator`、`viewer`，并保护 workspace 管理、文档写入、chat/session 写入和 export job 写入路径。
 - 更完整的用户/角色/组织模型。
 - secret manager 基础映射文档已完成；真实部署时仍需要把对应变量填入目标平台的 secret/config UI 或 CLI。
 
@@ -1477,19 +1492,20 @@ OPENAI_API_KEY
 38. 真实 OpenAI 端到端验证。已完成。
 39. 生产配置和 secrets 收紧：配置预检 CLI。已完成。
 40. 生产部署平台 secrets 接入说明。已完成。
+41. 管理后台权限分层基础版：API key roles。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-管理后台权限分层基础版
+最终 release 收口
 ```
 
 原因：
 
-- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker、production compose 编排、running 超时恢复、过期文件清理、失败任务手动重试、真实 OpenAI 端到端验证、配置预检 CLI 和 secret manager 映射文档已完成。
-- 下一步可以补齐管理后台权限分层基础版，明确 admin/operator/viewer 这类角色边界。
+- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker、production compose 编排、running 超时恢复、过期文件清理、失败任务手动重试、真实 OpenAI 端到端验证、配置预检 CLI、secret manager 映射文档和 API key 角色分层基础版已完成。
+- 下一步可以做最终 release 收口：全量验证、CI 状态确认、文档最终审读、tag/release note。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

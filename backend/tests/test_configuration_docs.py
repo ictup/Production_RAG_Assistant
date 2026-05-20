@@ -74,6 +74,7 @@ def test_secret_manager_mapping_classifies_sensitive_runtime_values() -> None:
 
     required_secret_values = [
         "`API_KEYS`",
+        "`API_KEY_ROLES`",
         "`API_KEY_WORKSPACE_ACCESS`",
         "`POSTGRES_PASSWORD`",
         "`DATABASE_URL`",

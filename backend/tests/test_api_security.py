@@ -4,10 +4,12 @@ from fastapi import HTTPException
 from backend.app.api.security import (
     ApiPrincipal,
     extract_bearer_token,
+    parse_api_key_roles,
     parse_api_key_workspace_access,
     parse_api_keys,
     parse_workspace_access_list,
     require_api_key,
+    require_api_role,
     resolve_workspace_id,
 )
 from backend.app.core.config import Settings
@@ -18,6 +20,22 @@ def test_parse_api_keys_trims_and_ignores_empty_values() -> None:
         "dev-key",
         "second-key",
     }
+
+
+def test_parse_api_key_roles_supports_multiple_roles() -> None:
+    assert parse_api_key_roles(
+        "admin-key=admin; operator-key=operator; viewer-key=viewer"
+    ) == {
+        "admin-key": "admin",
+        "operator-key": "operator",
+        "viewer-key": "viewer",
+    }
+
+
+@pytest.mark.parametrize("raw_roles", ["dev-key", "=admin", "dev-key=owner"])
+def test_parse_api_key_roles_rejects_invalid_entries(raw_roles: str) -> None:
+    with pytest.raises(ValueError):
+        parse_api_key_roles(raw_roles)
 
 
 def test_parse_workspace_access_list_supports_wildcard() -> None:
@@ -81,7 +99,37 @@ async def test_require_api_key_accepts_configured_key() -> None:
     )
 
     assert principal.token == "second-key"
+    assert principal.role == "admin"
     assert principal.allowed_workspaces is None
+
+
+@pytest.mark.asyncio
+async def test_require_api_key_attaches_configured_role() -> None:
+    principal = await require_api_key(
+        settings=Settings(
+            api_keys="admin-key,operator-key,viewer-key",
+            api_key_roles=(
+                "admin-key=admin;operator-key=operator;viewer-key=viewer"
+            ),
+        ),
+        authorization="Bearer operator-key",
+    )
+
+    assert principal.token == "operator-key"
+    assert principal.role == "operator"
+
+
+@pytest.mark.asyncio
+async def test_require_api_key_defaults_unmapped_role_to_viewer() -> None:
+    principal = await require_api_key(
+        settings=Settings(
+            api_keys="viewer-key,unmapped-key",
+            api_key_roles="viewer-key=viewer",
+        ),
+        authorization="Bearer unmapped-key",
+    )
+
+    assert principal.role == "viewer"
 
 
 @pytest.mark.asyncio
@@ -136,6 +184,34 @@ async def test_require_api_key_rejects_invalid_workspace_access_config() -> None
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "invalid api key workspace configuration"
+
+
+@pytest.mark.asyncio
+async def test_require_api_key_rejects_invalid_role_config() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        await require_api_key(
+            settings=Settings(
+                api_keys="dev-key",
+                api_key_roles="dev-key=owner",
+            ),
+            authorization="Bearer dev-key",
+        )
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "invalid api key role configuration"
+
+
+def test_require_api_role_accepts_sufficient_role() -> None:
+    require_api_role(ApiPrincipal(token="operator-key", role="operator"), "viewer")
+    require_api_role(ApiPrincipal(token="admin-key", role="admin"), "operator")
+
+
+def test_require_api_role_rejects_insufficient_role() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        require_api_role(ApiPrincipal(token="viewer-key", role="viewer"), "operator")
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "insufficient api role"
 
 
 def test_resolve_workspace_id_defaults_and_trims_allowed_workspace() -> None:

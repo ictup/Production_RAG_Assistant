@@ -369,6 +369,30 @@ FlashAttention reduces HBM traffic.
     assert body["reason"] is None
 
 
+def test_create_document_route_requires_operator_role() -> None:
+    fake_repository = FakeDocumentRepository()
+    client = build_client(
+        fake_repository,
+        settings=Settings(
+            api_keys="viewer-key",
+            api_key_roles="viewer-key=viewer",
+        ),
+    )
+
+    response = client.post(
+        "/documents",
+        headers={"Authorization": "Bearer viewer-key"},
+        json={
+            "source_uri": "uploads/flashattention.md",
+            "markdown": "# FlashAttention\n\nFlashAttention reduces HBM traffic.",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "insufficient api role"}
+    assert fake_repository.ingest_calls == []
+
+
 def test_create_document_route_skips_duplicate_before_embedding() -> None:
     existing_document_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
     fake_repository = FakeDocumentRepository()

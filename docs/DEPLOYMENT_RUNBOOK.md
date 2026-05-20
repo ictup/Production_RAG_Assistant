@@ -53,6 +53,8 @@ Copy-Item .env.example .env
 Edit `.env` before starting the stack:
 
 - Set `API_KEYS` to one or more real client tokens.
+- Set `API_KEY_ROLES` to assign each token an `admin`, `operator`, or `viewer`
+  role.
 - Set `POSTGRES_PASSWORD` to a non-default value outside local development.
 - Set `API_PORT` if host port `8000` is already in use.
 - Keep fake providers unless real OpenAI calls are intended.

@@ -1,22 +1,32 @@
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Literal, cast
 
 from fastapi import Depends, Header, HTTPException, status
 
 from backend.app.core.config import Settings, get_settings
 
 WorkspaceAccess = frozenset[str] | None
+ApiRole = Literal["viewer", "operator", "admin"]
+ROLE_RANK: dict[ApiRole, int] = {
+    "viewer": 0,
+    "operator": 1,
+    "admin": 2,
+}
 
 
 @dataclass(frozen=True)
 class ApiPrincipal:
     token: str
+    role: ApiRole = "admin"
     allowed_workspaces: WorkspaceAccess = None
 
     def can_access_workspace(self, workspace_id: str) -> bool:
         if self.allowed_workspaces is None:
             return True
         return workspace_id in self.allowed_workspaces
+
+    def has_role(self, minimum_role: ApiRole) -> bool:
+        return ROLE_RANK[self.role] >= ROLE_RANK[minimum_role]
 
 
 def parse_api_keys(raw_api_keys: str) -> set[str]:
@@ -25,6 +35,26 @@ def parse_api_keys(raw_api_keys: str) -> set[str]:
         for api_key in raw_api_keys.split(",")
         if api_key.strip()
     }
+
+
+def parse_api_key_roles(raw_roles: str) -> dict[str, ApiRole]:
+    roles_by_key: dict[str, ApiRole] = {}
+    for entry in raw_roles.split(";"):
+        entry = entry.strip()
+        if not entry:
+            continue
+
+        api_key, separator, raw_role = entry.partition("=")
+        api_key = api_key.strip()
+        role = raw_role.strip().lower()
+        if separator == "" or not api_key:
+            raise ValueError("role entries must use api-key=role syntax")
+        if role not in ROLE_RANK:
+            raise ValueError("role must be one of admin, operator, viewer")
+
+        roles_by_key[api_key] = cast(ApiRole, role)
+
+    return roles_by_key
 
 
 def parse_workspace_access_list(raw_workspaces: str) -> WorkspaceAccess:
@@ -93,11 +123,21 @@ def build_api_principal(*, token: str, settings: Settings) -> ApiPrincipal:
             detail="invalid api key workspace configuration",
         ) from exc
 
+    try:
+        roles_by_key = parse_api_key_roles(settings.api_key_roles)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="invalid api key role configuration",
+        ) from exc
+
+    role = roles_by_key.get(token, "viewer") if roles_by_key else "admin"
     if not access_by_key:
-        return ApiPrincipal(token=token)
+        return ApiPrincipal(token=token, role=role)
 
     return ApiPrincipal(
         token=token,
+        role=role,
         allowed_workspaces=access_by_key.get(token, frozenset()),
     )
 
@@ -134,3 +174,12 @@ def resolve_workspace_id(
             detail="workspace access denied",
         )
     return normalized_workspace_id
+
+
+def require_api_role(principal: ApiPrincipal, minimum_role: ApiRole) -> None:
+    if principal.has_role(minimum_role):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="insufficient api role",
+    )

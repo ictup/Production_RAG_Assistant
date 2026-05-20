@@ -194,6 +194,27 @@ def test_create_chat_session_route_requires_api_key() -> None:
     assert fake_repository.create_calls == []
 
 
+def test_create_chat_session_route_requires_operator_role() -> None:
+    fake_repository = FakeChatSessionRepository()
+    client = build_client(
+        fake_repository,
+        settings=Settings(
+            api_keys="viewer-key",
+            api_key_roles="viewer-key=viewer",
+        ),
+    )
+
+    response = client.post(
+        "/chat/sessions",
+        headers={"Authorization": "Bearer viewer-key"},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "insufficient api role"}
+    assert fake_repository.create_calls == []
+
+
 def test_create_chat_session_route_rejects_missing_workspace_before_create() -> None:
     fake_repository = FakeChatSessionRepository()
     fake_workspace_repository = FakeWorkspaceRepository(workspace_ids={"public"})

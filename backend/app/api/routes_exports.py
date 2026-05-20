@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
+from backend.app.api.security import (
+    ApiPrincipal,
+    require_api_key,
+    require_api_role,
+    resolve_workspace_id,
+)
 from backend.app.api.workspace_validation import (
     get_workspace_repository,
     require_existing_workspace,
@@ -58,6 +63,7 @@ async def create_export_job(
     ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> ExportJobResponse:
+    require_api_role(principal, "operator")
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     await require_existing_workspace(
         workspace_id=normalized_workspace_id,
@@ -115,6 +121,7 @@ async def get_export_job(
     ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> ExportJobResponse:
+    require_api_role(principal, "operator")
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     export_job = await export_job_repository.get_export_job(
         job_id=job_id,

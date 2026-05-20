@@ -105,6 +105,9 @@ contextualized before retrieval.
   `docs/SECRET_MANAGER_MAPPING.md`.
 - Use `API_KEYS` for client authentication tokens; rotate them by updating the
   deployment secret and restarting the API.
+- Use `API_KEY_ROLES` to map API keys to `admin`, `operator`, or `viewer`.
+  Empty keeps backward-compatible admin access for all configured API keys;
+  production deployments should configure it explicitly.
 - Use `API_KEY_WORKSPACE_ACCESS` when one API key should be limited to specific
   workspaces instead of all workspaces.
 - Use `OPENAI_API_KEY` only when OpenAI providers are enabled.
@@ -131,6 +134,7 @@ configuration reference.
 | `ENV` | `local` | No | Runtime environment label such as `local` or `production`. |
 | `LOG_LEVEL` | `INFO` | No | Backend log level. |
 | `API_KEYS` | `dev-key` | Yes | Comma-separated Bearer tokens accepted by API authentication. |
+| `API_KEY_ROLES` | empty | No | Optional semicolon-separated API key to role mapping, for example `admin-key=admin;operator-key=operator;viewer-key=viewer`. Empty means all configured API keys receive backward-compatible `admin` access. When non-empty, keys without an entry default to `viewer`. |
 | `API_KEY_WORKSPACE_ACCESS` | empty | No | Optional semicolon-separated API key to workspace allow-list, for example `dev-key=*;tenant-key=tenant-a\|tenant-b`. Empty means all configured API keys can access all workspaces. When non-empty, keys without an entry cannot access any workspace. |
 
 ### Ports and Database

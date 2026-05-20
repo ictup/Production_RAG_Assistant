@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
+from backend.app.api.security import (
+    ApiPrincipal,
+    require_api_key,
+    require_api_role,
+    resolve_workspace_id,
+)
 from backend.app.api.workspace_validation import (
     get_workspace_repository,
     require_active_workspace,
@@ -85,6 +90,7 @@ async def create_document(
     embedding_client: Annotated[EmbeddingClient, Depends(get_embedding_client)],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> CreateDocumentResponse:
+    require_api_role(principal, "operator")
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     await require_active_workspace(
         workspace_id=normalized_workspace_id,
@@ -168,6 +174,7 @@ async def reindex_documents(
     ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> ReindexDocumentsResponse:
+    require_api_role(principal, "operator")
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     await require_active_workspace(
         workspace_id=normalized_workspace_id,
@@ -224,6 +231,7 @@ async def delete_document(
     ],
     workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
 ) -> DeleteDocumentResponse:
+    require_api_role(principal, "operator")
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     await require_active_workspace(
         workspace_id=normalized_workspace_id,
