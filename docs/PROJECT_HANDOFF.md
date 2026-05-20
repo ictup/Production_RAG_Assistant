@@ -52,6 +52,12 @@ docs/RELEASE_CHECKLIST.md
 docs/releases/v0.1.0.md
 ```
 
+当前 GitHub Release 发布正文：
+
+```text
+docs/releases/v0.1.0-github-release.md
+```
+
 当前可观测性文档：
 
 ```text
@@ -970,7 +976,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-598 passed
+599 passed
 ```
 
 ### Pipeline Smoke

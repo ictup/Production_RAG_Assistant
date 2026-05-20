@@ -2,6 +2,7 @@ from pathlib import Path
 
 RELEASE_CHECKLIST_PATH = Path("docs/RELEASE_CHECKLIST.md")
 RELEASE_NOTES_PATH = Path("docs/releases/v0.1.0.md")
+GITHUB_RELEASE_BODY_PATH = Path("docs/releases/v0.1.0-github-release.md")
 README_PATH = Path("README.md")
 RUNBOOK_PATH = Path("docs/DEPLOYMENT_RUNBOOK.md")
 HANDOFF_PATH = Path("docs/PROJECT_HANDOFF.md")
@@ -72,6 +73,25 @@ def test_v010_release_notes_cover_operational_release_details() -> None:
     ]
     missing_snippets = [
         snippet for snippet in required_snippets if snippet not in release_notes
+    ]
+
+    assert missing_snippets == []
+
+
+def test_v010_github_release_body_is_ready_to_publish() -> None:
+    release_body = GITHUB_RELEASE_BODY_PATH.read_text(encoding="utf-8")
+
+    required_snippets = [
+        "# GitHub Release: v0.1.0",
+        "v0.1.0 - Production readiness baseline",
+        "d325a2b584b06d0515fa70518efb7a5b7ecd059c",
+        "https://github.com/ictup/Production_RAG_Assistant/actions/runs/26180055626",
+        "API_KEY_ROLES",
+        "docs/SECRET_MANAGER_MAPPING.md",
+        "gh release create v0.1.0",
+    ]
+    missing_snippets = [
+        snippet for snippet in required_snippets if snippet not in release_body
     ]
 
     assert missing_snippets == []
