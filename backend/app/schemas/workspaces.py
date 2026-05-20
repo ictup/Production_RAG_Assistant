@@ -198,3 +198,33 @@ class BulkWorkspaceOperationResponse(BaseModel):
             updated_count=len(workspaces),
             workspaces=workspaces,
         )
+
+
+class BulkWorkspacePreviewResponse(BaseModel):
+    total: int = Field(ge=0)
+    sample_count: int = Field(ge=0)
+    sample_limit: int = Field(gt=0)
+    status: str
+    q: str | None
+    workspaces: list[WorkspaceItem]
+
+    @classmethod
+    def from_result(
+        cls,
+        *,
+        sample_limit: int,
+        workspace_status: str,
+        q: str | None,
+        result: WorkspaceListResult,
+    ) -> "BulkWorkspacePreviewResponse":
+        workspaces = [
+            WorkspaceItem.from_model(workspace) for workspace in result.workspaces
+        ]
+        return cls(
+            total=result.total,
+            sample_count=len(workspaces),
+            sample_limit=sample_limit,
+            status=workspace_status,
+            q=q,
+            workspaces=workspaces,
+        )

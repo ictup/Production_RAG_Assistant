@@ -15,6 +15,7 @@ from backend.app.schemas.workspaces import (
     BulkArchiveWorkspacesRequest,
     BulkRestoreWorkspacesRequest,
     BulkWorkspaceOperationResponse,
+    BulkWorkspacePreviewResponse,
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
     UpdateWorkspaceRequest,
@@ -87,6 +88,35 @@ def workspace_status_to_archived_filter(
     if workspace_status == "archived":
         return True
     return None
+
+
+@router.get(
+    "/workspaces/bulk/preview",
+    response_model=BulkWorkspacePreviewResponse,
+)
+async def preview_bulk_workspaces(
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
+    repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
+    q: Annotated[str | None, Query(max_length=256)] = None,
+    workspace_status: Annotated[
+        WorkspaceStatusFilter,
+        Query(alias="status"),
+    ] = "all",
+    sample_limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> BulkWorkspacePreviewResponse:
+    result = await repository.list_workspaces(
+        workspace_ids=principal.allowed_workspaces,
+        limit=sample_limit,
+        offset=0,
+        search=q,
+        archived=workspace_status_to_archived_filter(workspace_status),
+    )
+    return BulkWorkspacePreviewResponse.from_result(
+        sample_limit=sample_limit,
+        workspace_status=workspace_status,
+        q=q,
+        result=result,
+    )
 
 
 @router.post(

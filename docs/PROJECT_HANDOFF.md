@@ -75,6 +75,7 @@ docs/EVAL_TRENDS.md
 - workspace 更新接口：`PATCH /workspaces/{workspace_id}`
 - workspace 软归档接口：`POST /workspaces/{workspace_id}/archive`
 - workspace 恢复接口：`POST /workspaces/{workspace_id}/restore`
+- workspace 跨页批量预览接口：`GET /workspaces/bulk/preview`
 - workspace 批量软归档接口：`POST /workspaces/bulk/archive`
 - workspace 批量恢复接口：`POST /workspaces/bulk/restore`
 - workspace 归档写保护：归档 workspace 仍可读，但写入型接口返回 `409 workspace archived`
@@ -600,6 +601,9 @@ curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/restore `
 批量软归档 workspace：
 
 ```powershell
+curl.exe "http://127.0.0.1:8000/workspaces/bulk/preview?status=active&q=tenant&sample_limit=20" `
+  -H "Authorization: Bearer dev-key"
+
 curl.exe -X POST http://127.0.0.1:8000/workspaces/bulk/archive `
   -H "Authorization: Bearer dev-key" `
   -H "Content-Type: application/json" `
@@ -1257,6 +1261,7 @@ Completed: 2026-05-20T09:51:56Z
 - workspace 搜索基础版已完成：`GET /workspaces?q=...` 会按 workspace ID、name 和 description 过滤，Admin overview 可搜索并重置分页。
 - workspace 批量操作 API 基础版已完成：`POST /workspaces/bulk/archive` 和 `POST /workspaces/bulk/restore` 支持一次请求处理多个 workspace，缺失 workspace 会返回 missing id 列表。
 - workspace 批量操作 UI 基础版已完成：Admin overview 支持当前页多选 workspace，并调用 bulk archive / restore API。
+- workspace 跨页批量预览基础版已完成：`GET /workspaces/bulk/preview` 会按当前 `q`、`status` 和 API key 权限返回匹配总数与样本 workspace，用于后续确认流。
 - chat log 审计过滤基础版已完成：`GET /chat/logs` 支持 `offset`、`session_id`、`request_id`、`refusal_only`、`citation_valid`，Admin overview 支持对应筛选和 Previous/Next 翻页。
 - chat log 审计导出基础版已完成：`GET /chat/logs/export` 支持同一组过滤参数，可导出 JSONL 或 CSV，Admin overview 可按当前过滤条件触发下载。
 - chat log 审计详情基础版已完成：每条最近日志可展开查看 session、request、citation、sources、refusal、retrieval、query rewrite、metadata filter、usage 和 cost。
@@ -1376,20 +1381,21 @@ OPENAI_API_KEY
 21. workspace 后端状态过滤。已完成。
 22. workspace 批量操作 API 基础版。已完成。
 23. workspace 批量操作 UI 基础版。已完成。
+24. workspace 跨页批量预览基础版。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-workspace 跨页批量选择策略
+workspace 跨页批量确认执行
 ```
 
 原因：
 
-- workspace 归档/恢复 API、后端写保护、前端写入禁用、状态过滤、分页、搜索、后端状态过滤、批量操作 API 和当前页批量操作 UI 已完成。
-- 当前批量 UI 只保留当前页选择，翻页、搜索或过滤后会清空/裁剪选中集合，避免误操作。
-- 下一步可以设计跨页批量选择策略，例如显式的 "select all matching query" 语义和后端任务化执行。
+- workspace 归档/恢复 API、后端写保护、前端写入禁用、状态过滤、分页、搜索、后端状态过滤、批量操作 API、当前页批量操作 UI 和跨页批量预览 API 已完成。
+- 当前跨页能力只做只读预览，不会直接修改匹配全集。
+- 下一步可以增加显式确认后的跨页批量执行端点，要求客户端提交 preview total / query 条件 / confirm 标记，避免误操作。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

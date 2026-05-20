@@ -343,6 +343,64 @@ def test_list_workspaces_route_filters_to_principal_allowed_workspaces() -> None
     ]
 
 
+def test_preview_bulk_workspaces_route_returns_matching_count_and_sample() -> None:
+    fake_repository = FakeWorkspaceRepository(
+        list_result=WorkspaceListResult(
+            total=3,
+            workspaces=[
+                make_workspace_model(workspace_id="tenant-a"),
+                make_workspace_model(workspace_id="tenant-b"),
+            ],
+        )
+    )
+    client = build_client(fake_repository)
+
+    response = client.get(
+        "/workspaces/bulk/preview",
+        headers=AUTH_HEADERS,
+        params={
+            "q": " Tenant ",
+            "status": "active",
+            "sample_limit": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_repository.list_calls == [(None, 2, 0, " Tenant ", False)]
+    body = response.json()
+    assert body["total"] == 3
+    assert body["sample_count"] == 2
+    assert body["sample_limit"] == 2
+    assert body["status"] == "active"
+    assert body["q"] == " Tenant "
+    assert [workspace["id"] for workspace in body["workspaces"]] == [
+        "tenant-a",
+        "tenant-b",
+    ]
+
+
+def test_preview_bulk_workspaces_route_filters_to_allowed_workspaces() -> None:
+    fake_repository = FakeWorkspaceRepository()
+    client = build_client(
+        fake_repository,
+        settings=Settings(
+            api_keys="tenant-key",
+            api_key_workspace_access="tenant-key=tenant-a|tenant-b",
+        ),
+    )
+
+    response = client.get(
+        "/workspaces/bulk/preview",
+        headers={"Authorization": "Bearer tenant-key"},
+        params={"status": "archived"},
+    )
+
+    assert response.status_code == 200
+    assert fake_repository.list_calls == [
+        (frozenset({"tenant-a", "tenant-b"}), 20, 0, None, True)
+    ]
+
+
 def test_get_workspace_route_returns_workspace() -> None:
     fake_repository = FakeWorkspaceRepository(detail_workspace=make_workspace_model())
     client = build_client(fake_repository)
@@ -727,6 +785,7 @@ def test_openapi_exposes_workspace_routes() -> None:
     assert "/workspaces" in paths
     assert "/workspaces/{workspace_id}" in paths
     assert "patch" in paths["/workspaces/{workspace_id}"]
+    assert "/workspaces/bulk/preview" in paths
     assert "/workspaces/bulk/archive" in paths
     assert "/workspaces/bulk/restore" in paths
     assert "/workspaces/{workspace_id}/archive" in paths

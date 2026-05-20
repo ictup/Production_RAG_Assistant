@@ -238,6 +238,9 @@ curl.exe -X POST http://127.0.0.1:8000/workspaces/tenant-a/restore `
 Bulk archive and restore workspaces:
 
 ```powershell
+curl.exe "http://127.0.0.1:8000/workspaces/bulk/preview?status=active&q=tenant&sample_limit=20" `
+  -H "Authorization: Bearer dev-key"
+
 curl.exe -X POST http://127.0.0.1:8000/workspaces/bulk/archive `
   -H "Authorization: Bearer dev-key" `
   -H "Content-Type: application/json" `
