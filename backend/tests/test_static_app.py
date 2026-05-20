@@ -32,6 +32,9 @@ def test_static_app_serves_index_html() -> None:
     assert 'id="admin-workspace-filter-active"' in response.text
     assert 'id="admin-workspace-filter-archived"' in response.text
     assert 'id="admin-workspace-filter-summary"' in response.text
+    assert 'id="admin-prev-workspaces"' in response.text
+    assert 'id="admin-workspace-page-info"' in response.text
+    assert 'id="admin-next-workspaces"' in response.text
     assert 'id="admin-workspace-edit-form"' in response.text
     assert 'id="admin-edit-workspace-metadata"' in response.text
     assert 'id="admin-archive-workspace-reason"' in response.text
@@ -64,7 +67,9 @@ def test_static_app_serves_assets() -> None:
     assert "restoreWorkspaceFromAdmin" in script_response.text
     assert "workspaceLifecycleText" in script_response.text
     assert "setAdminWorkspaceFilter" in script_response.text
+    assert "buildWorkspacesUrl" in script_response.text
     assert "filteredAdminWorkspaces" in script_response.text
+    assert "renderAdminWorkspacePagination" in script_response.text
     assert "workspaceFilterEmptyMessage" in script_response.text
     assert "isCurrentWorkspaceArchived" in script_response.text
     assert "syncWorkspaceWriteGuards" in script_response.text
@@ -82,7 +87,8 @@ def test_static_app_serves_assets() -> None:
     assert "formatRefusal" in script_response.text
     assert "formatUsage" in script_response.text
     assert "formatCost" in script_response.text
-    assert "/workspaces?limit=20&offset=0" in script_response.text
+    assert "/workspaces?" in script_response.text
+    assert "workspaceOffset" in script_response.text
     assert "/archive" in script_response.text
     assert "/restore" in script_response.text
     assert "/chat/logs?" in script_response.text

@@ -7,6 +7,8 @@ const state = {
   admin: {
     workspaces: [],
     logs: [],
+    workspaceLimit: 20,
+    workspaceOffset: 0,
     logLimit: 5,
     logOffset: 0,
     workspaceFilter: "all",
@@ -85,6 +87,9 @@ const els = {
   adminWorkspaceFilterSummary: document.querySelector(
     "#admin-workspace-filter-summary",
   ),
+  adminPrevWorkspaces: document.querySelector("#admin-prev-workspaces"),
+  adminNextWorkspaces: document.querySelector("#admin-next-workspaces"),
+  adminWorkspacePageInfo: document.querySelector("#admin-workspace-page-info"),
   adminWorkspaceList: document.querySelector("#admin-workspace-list"),
   adminPrevLogs: document.querySelector("#admin-prev-logs"),
   adminNextLogs: document.querySelector("#admin-next-logs"),
@@ -191,6 +196,19 @@ function bindEvents() {
     setAdminWorkspaceFilter("archived");
   });
 
+  els.adminPrevWorkspaces.addEventListener("click", () => {
+    state.admin.workspaceOffset = Math.max(
+      0,
+      state.admin.workspaceOffset - state.admin.workspaceLimit,
+    );
+    void loadAdminOverview();
+  });
+
+  els.adminNextWorkspaces.addEventListener("click", () => {
+    state.admin.workspaceOffset += state.admin.workspaceLimit;
+    void loadAdminOverview();
+  });
+
   els.adminFilterForm.addEventListener("submit", (event) => {
     event.preventDefault();
     readAdminFilters();
@@ -292,7 +310,7 @@ async function loadAdminOverview() {
   setAdminStatus("Loading admin overview");
   try {
     const [workspaceResponse, logResponse] = await Promise.all([
-      apiFetch("/workspaces?limit=20&offset=0"),
+      apiFetch(buildWorkspacesUrl()),
       apiFetch(buildChatLogsUrl()),
     ]);
     const [workspaceBody, logBody] = await Promise.all([
@@ -304,6 +322,9 @@ async function loadAdminOverview() {
     state.admin.logs = logBody.logs || [];
     renderAdminOverview({
       workspaceTotal: workspaceBody.total ?? state.admin.workspaces.length,
+      workspaceCount: workspaceBody.count ?? state.admin.workspaces.length,
+      workspaceLimit: workspaceBody.limit ?? state.admin.workspaceLimit,
+      workspaceOffset: workspaceBody.offset ?? state.admin.workspaceOffset,
       logTotal: logBody.count ?? state.admin.logs.length,
       logLimit: logBody.limit ?? state.admin.logLimit,
       logOffset: logBody.offset ?? state.admin.logOffset,
@@ -341,6 +362,7 @@ async function createWorkspaceFromAdmin() {
     state.workspaceId = workspace.id;
     els.workspaceId.value = state.workspaceId;
     localStorage.setItem("rag.workspaceId", state.workspaceId);
+    state.admin.workspaceOffset = 0;
     state.admin.logOffset = 0;
     if (changed) {
       clearSelectedSession();
@@ -471,6 +493,14 @@ function buildChatLogsUrl() {
     offset: state.admin.logOffset,
   });
   return `/chat/logs?${params.toString()}`;
+}
+
+function buildWorkspacesUrl() {
+  const params = new URLSearchParams({
+    limit: String(state.admin.workspaceLimit),
+    offset: String(state.admin.workspaceOffset),
+  });
+  return `/workspaces?${params.toString()}`;
 }
 
 function buildChatLogsExportUrl(format) {
@@ -776,11 +806,25 @@ function renderDocuments() {
   }
 }
 
-function renderAdminOverview({ workspaceTotal, logTotal, logLimit, logOffset }) {
+function renderAdminOverview({
+  workspaceTotal,
+  workspaceCount,
+  workspaceLimit,
+  workspaceOffset,
+  logTotal,
+  logLimit,
+  logOffset,
+}) {
   els.adminWorkspaceCount.textContent = String(workspaceTotal);
   els.adminLogCount.textContent = String(logTotal);
   renderAdminWorkspaceFilters();
   renderAdminWorkspaces();
+  renderAdminWorkspacePagination({
+    count: workspaceCount,
+    total: workspaceTotal,
+    limit: workspaceLimit,
+    offset: workspaceOffset,
+  });
   syncWorkspaceEditForm();
   syncWorkspaceWriteGuards();
   renderAdminLogs();
@@ -797,6 +841,15 @@ function renderAdminPagination({ count, limit, offset }) {
   els.adminPageInfo.textContent = count > 0 ? `Logs ${start}-${end}` : "No logs";
   els.adminPrevLogs.disabled = offset <= 0;
   els.adminNextLogs.disabled = count < limit;
+}
+
+function renderAdminWorkspacePagination({ count, total, limit, offset }) {
+  const start = total > 0 ? offset + 1 : 0;
+  const end = total > 0 ? offset + count : 0;
+  els.adminWorkspacePageInfo.textContent =
+    total > 0 ? `Workspaces ${start}-${end} of ${total}` : "No workspaces";
+  els.adminPrevWorkspaces.disabled = offset <= 0;
+  els.adminNextWorkspaces.disabled = offset + count >= total || count < limit;
 }
 
 function setAdminWorkspaceFilter(filter) {
@@ -845,7 +898,7 @@ function workspaceFilterEmptyMessage() {
 function renderAdminWorkspaces() {
   els.adminWorkspaceList.innerHTML = "";
   const workspaces = filteredAdminWorkspaces();
-  els.adminWorkspaceFilterSummary.textContent = `Showing ${workspaces.length} of ${state.admin.workspaces.length}`;
+  els.adminWorkspaceFilterSummary.textContent = `Showing ${workspaces.length} of ${state.admin.workspaces.length} on this page`;
   if (!workspaces.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
