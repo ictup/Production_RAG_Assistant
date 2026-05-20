@@ -80,6 +80,7 @@ docs/EVAL_TRENDS.md
 - workspace 跨页批量恢复确认执行接口：`POST /workspaces/bulk/restore-matching`
 - workspace 批量软归档接口：`POST /workspaces/bulk/archive`
 - workspace 批量恢复接口：`POST /workspaces/bulk/restore`
+- workspace 操作审计写入：单个归档/恢复、当前页批量归档/恢复、跨页匹配批量归档/恢复会写入 `workspace_audit_logs`
 - workspace 归档写保护：归档 workspace 仍可读，但写入型接口返回 `409 workspace archived`
 - workspace 列表接口：`GET /workspaces`
 - workspace 详情接口：`GET /workspaces/{workspace_id}`
@@ -113,8 +114,10 @@ docs/EVAL_TRENDS.md
   - `0006_create_workspaces.py`
   - `0007_add_workspace_foreign_keys.py`
   - `0008_add_workspace_archive_fields.py`
+  - `0009_create_workspace_audit_logs.py`
 - 文档表、chunk 表、chat session 表、chat log 表
 - workspace 表，包含 `archived_at` 和 `archived_reason` 软归档字段
+- workspace 操作审计表 `workspace_audit_logs`，记录 request id、API key hash、action、workspace ids 和操作 metadata
 - `pg_stat_statements` 扩展和 Compose 慢查询日志配置
 - async SQLAlchemy session
 - repository 层封装文档 ingest 和聊天日志写入/查询
@@ -1271,6 +1274,7 @@ Completed: 2026-05-20T09:51:56Z
 - workspace 跨页批量预览基础版已完成：`GET /workspaces/bulk/preview` 会按当前 `q`、`status` 和 API key 权限返回匹配总数与样本 workspace，用于后续确认流。
 - workspace 跨页批量确认执行基础版已完成：`POST /workspaces/bulk/archive-matching` 和 `POST /workspaces/bulk/restore-matching` 要求 `confirm=true` 与 `expected_total` 匹配当前查询总数后才执行。
 - workspace 跨页批量 UI 确认流已完成：Admin overview 可按当前 status/search 预览匹配总数和样本，再带 `expected_total` 与 `confirm=true` 调用 archive-matching / restore-matching。
+- workspace 操作审计写入基础版已完成：单个 archive/restore、当前页 bulk archive/restore、跨页 matching archive/restore 会在同一事务写入 `workspace_audit_logs`，审计中保存 request id、API key hash、action、workspace ids 和操作 metadata。
 - chat log 审计过滤基础版已完成：`GET /chat/logs` 支持 `offset`、`session_id`、`request_id`、`refusal_only`、`citation_valid`，Admin overview 支持对应筛选和 Previous/Next 翻页。
 - chat log 审计导出基础版已完成：`GET /chat/logs/export` 支持同一组过滤参数，可导出 JSONL 或 CSV，Admin overview 可按当前过滤条件触发下载。
 - chat log 审计详情基础版已完成：每条最近日志可展开查看 session、request、citation、sources、refusal、retrieval、query rewrite、metadata filter、usage 和 cost。
@@ -1393,19 +1397,20 @@ OPENAI_API_KEY
 24. workspace 跨页批量预览基础版。已完成。
 25. workspace 跨页批量确认执行基础版。已完成。
 26. workspace 跨页批量 UI 确认流。已完成。
+27. workspace 批量操作审计记录。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-workspace 批量操作审计记录
+workspace 操作审计查询 API
 ```
 
 原因：
 
-- workspace 归档/恢复 API、后端写保护、前端写入禁用、状态过滤、分页、搜索、后端状态过滤、批量操作 API、当前页批量操作 UI、跨页批量预览 API、跨页批量确认执行 API 和跨页 UI 确认流已完成。
-- 下一步可以把单个归档/恢复、当前页批量归档/恢复、跨页匹配批量归档/恢复写入审计日志，便于追踪生产管理操作。
+- workspace 归档/恢复 API、后端写保护、前端写入禁用、状态过滤、分页、搜索、后端状态过滤、批量操作 API、当前页批量操作 UI、跨页批量预览 API、跨页批量确认执行 API、跨页 UI 确认流和操作审计写入已完成。
+- 下一步可以增加 `GET /workspaces/audit-logs`，按 action、workspace id、request id 和时间范围查询审计记录，为后续 Admin UI 展示做准备。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

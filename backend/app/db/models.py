@@ -65,6 +65,53 @@ workspaces_archived_at_idx = Index(
 )
 
 
+class WorkspaceAuditLog(Base):
+    __tablename__ = "workspace_audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    request_id: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    workspace_ids: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=sql_text("'[]'::jsonb"),
+    )
+    workspace_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=sql_text("'{}'::jsonb"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=sql_text("now()"),
+    )
+
+
+workspace_audit_logs_created_at_idx = Index(
+    "workspace_audit_logs_created_at_idx",
+    WorkspaceAuditLog.created_at,
+)
+workspace_audit_logs_request_id_idx = Index(
+    "workspace_audit_logs_request_id_idx",
+    WorkspaceAuditLog.request_id,
+)
+workspace_audit_logs_workspace_ids_idx = Index(
+    "workspace_audit_logs_workspace_ids_idx",
+    WorkspaceAuditLog.workspace_ids,
+    postgresql_using="gin",
+)
+
+
 class Document(Base):
     __tablename__ = "documents"
 

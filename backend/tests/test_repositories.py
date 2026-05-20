@@ -10,6 +10,7 @@ from backend.app.db.models import (
     Document,
     DocumentChunk,
     Workspace,
+    WorkspaceAuditLog,
 )
 from backend.app.db.repositories import (
     ArchiveWorkspaceInput,
@@ -17,6 +18,7 @@ from backend.app.db.repositories import (
     ChatSessionRepository,
     CreateChatLogInput,
     CreateChatSessionInput,
+    CreateWorkspaceAuditLogInput,
     CreateWorkspaceInput,
     DocumentRepository,
     UpdateWorkspaceInput,
@@ -573,6 +575,53 @@ async def test_restore_workspaces_returns_missing_ids_without_writing() -> None:
     assert workspace.archived_reason == "Cleanup"
     assert session.flushed is False
     assert session.committed is False
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_audit_log_adds_audit_model() -> None:
+    session = FakeAsyncSession()
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    audit_log = await repository.create_workspace_audit_log(
+        CreateWorkspaceAuditLogInput(
+            request_id=" request-1 ",
+            actor_hash="a" * 64,
+            action=" archive ",
+            workspace_ids=[" tenant-a ", "tenant-b", "tenant-a"],
+            metadata={"reason": "Cleanup"},
+        ),
+        commit=True,
+    )
+
+    assert isinstance(audit_log, WorkspaceAuditLog)
+    assert audit_log.request_id == "request-1"
+    assert audit_log.actor_hash == "a" * 64
+    assert audit_log.action == "archive"
+    assert audit_log.workspace_ids == ["tenant-a", "tenant-b"]
+    assert audit_log.workspace_count == 2
+    assert audit_log.metadata_ == {"reason": "Cleanup"}
+    assert session.added == [audit_log]
+    assert session.flushed is True
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_create_workspace_audit_log_rejects_empty_workspace_ids() -> None:
+    session = FakeAsyncSession()
+    repository = WorkspaceRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="workspace ids"):
+        await repository.create_workspace_audit_log(
+            CreateWorkspaceAuditLogInput(
+                request_id="request-1",
+                actor_hash="a" * 64,
+                action="archive",
+                workspace_ids=[],
+            )
+        )
+
+    assert session.added == []
+    assert session.flushed is False
 
 
 @pytest.mark.asyncio

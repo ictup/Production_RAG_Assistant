@@ -8,12 +8,14 @@ from backend.app.db.models import (
     Document,
     DocumentChunk,
     Workspace,
+    WorkspaceAuditLog,
 )
 
 
 def test_base_metadata_contains_core_document_tables() -> None:
     assert set(Base.metadata.tables) == {
         "workspaces",
+        "workspace_audit_logs",
         "documents",
         "document_chunks",
         "chat_sessions",
@@ -33,6 +35,20 @@ def test_workspace_has_lifecycle_columns_and_indexes() -> None:
     assert Workspace.__table__.c.archived_reason.nullable is True
     assert "workspaces_updated_at_idx" in index_names
     assert "workspaces_archived_at_idx" in index_names
+
+
+def test_workspace_audit_log_has_operation_columns_and_indexes() -> None:
+    index_names = {index.name for index in WorkspaceAuditLog.__table__.indexes}
+
+    assert WorkspaceAuditLog.__table__.c.request_id.nullable is False
+    assert WorkspaceAuditLog.__table__.c.actor_hash.nullable is False
+    assert WorkspaceAuditLog.__table__.c.action.nullable is False
+    assert WorkspaceAuditLog.__table__.c.workspace_ids.nullable is False
+    assert WorkspaceAuditLog.__table__.c.workspace_count.nullable is False
+    assert WorkspaceAuditLog.metadata_.name == "metadata"
+    assert "workspace_audit_logs_created_at_idx" in index_names
+    assert "workspace_audit_logs_request_id_idx" in index_names
+    assert "workspace_audit_logs_workspace_ids_idx" in index_names
 
 
 def test_workspace_scoped_tables_reference_workspace_registry() -> None:

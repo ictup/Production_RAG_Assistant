@@ -14,7 +14,7 @@ real provider key is available.
 - FastAPI API for chat, streaming chat, documents, workspaces, sessions,
   health, and metrics.
 - Workspace management API with create, update, list, detail, soft archive,
-  bulk archive, restore, and bulk restore operations.
+  bulk archive, restore, bulk restore operations, and operation audit logging.
 - Postgres + pgvector schema with Alembic migrations.
 - Markdown ingestion, chunking, content hashing, fake embeddings, OpenAI
   embeddings, and reindexing.
@@ -153,7 +153,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `483 passed`.
+Current local baseline: `511 passed`.
 
 ## Configuration Model
 
@@ -257,6 +257,10 @@ curl.exe -X POST http://127.0.0.1:8000/workspaces/bulk/restore `
   -H "Content-Type: application/json" `
   -d "{\"ids\":[\"tenant-a\",\"tenant-b\"]}"
 ```
+
+Archive and restore operations write `workspace_audit_logs` records with the
+request id, hashed API key, action, affected workspace ids, and operation
+metadata.
 
 Archived workspaces remain readable for audit and recovery, but write-oriented
 operations return `409 workspace archived`. This includes chat, streaming chat,

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from hashlib import sha256
 
 from fastapi.testclient import TestClient
 
@@ -8,6 +9,7 @@ from backend.app.db.models import Workspace
 from backend.app.db.repositories import (
     ArchiveWorkspaceInput,
     BulkWorkspaceOperationResult,
+    CreateWorkspaceAuditLogInput,
     CreateWorkspaceInput,
     CreateWorkspaceResult,
     UpdateWorkspaceInput,
@@ -43,6 +45,7 @@ class FakeWorkspaceRepository:
         self.bulk_archive_calls: list[tuple[list[ArchiveWorkspaceInput], bool]] = []
         self.restore_calls: list[tuple[str, bool]] = []
         self.bulk_restore_calls: list[tuple[list[str], bool]] = []
+        self.audit_calls: list[tuple[CreateWorkspaceAuditLogInput, bool]] = []
         self.list_calls: list[
             tuple[frozenset[str] | None, int, int, str | None, bool | None]
         ] = []
@@ -156,6 +159,14 @@ class FakeWorkspaceRepository:
             missing_ids=[],
         )
 
+    async def create_workspace_audit_log(
+        self,
+        audit_input: CreateWorkspaceAuditLogInput,
+        *,
+        commit: bool = False,
+    ) -> None:
+        self.audit_calls.append((audit_input, commit))
+
 
 def make_workspace_model(*, workspace_id: str = "tenant-a") -> Workspace:
     return Workspace(
@@ -166,6 +177,10 @@ def make_workspace_model(*, workspace_id: str = "tenant-a") -> Workspace:
         created_at=datetime(2026, 5, 18, 8, 0, tzinfo=UTC),
         updated_at=datetime(2026, 5, 18, 9, 0, tzinfo=UTC),
     )
+
+
+def expected_actor_hash(token: str = "dev-key") -> str:
+    return sha256(token.encode("utf-8")).hexdigest()
 
 
 def build_client(
@@ -179,6 +194,24 @@ def build_client(
         lambda: fake_repository
     )
     return TestClient(app)
+
+
+def assert_workspace_audit_call(
+    fake_repository: FakeWorkspaceRepository,
+    *,
+    action: str,
+    workspace_ids: list[str],
+    metadata: dict,
+    token: str = "dev-key",
+) -> None:
+    audit_input, commit = fake_repository.audit_calls[-1]
+
+    assert commit is True
+    assert audit_input.request_id
+    assert audit_input.actor_hash == expected_actor_hash(token)
+    assert audit_input.action == action
+    assert list(audit_input.workspace_ids) == workspace_ids
+    assert audit_input.metadata == metadata
 
 
 def test_create_workspace_route_creates_workspace() -> None:
@@ -436,7 +469,19 @@ def test_archive_matching_workspaces_route_archives_current_query() -> None:
         "Cleanup",
         "Cleanup",
     ]
-    assert commit is True
+    assert commit is False
+    assert_workspace_audit_call(
+        fake_repository,
+        action="archive_matching",
+        workspace_ids=["tenant-a", "tenant-b"],
+        metadata={
+            "mode": "matching_query",
+            "q": "Tenant",
+            "status": "active",
+            "expected_total": 2,
+            "reason": "Cleanup",
+        },
+    )
     body = response.json()
     assert body["action"] == "archive_matching"
     assert body["requested_count"] == 2
@@ -463,6 +508,7 @@ def test_archive_matching_workspaces_route_requires_confirmation() -> None:
     }
     assert fake_repository.list_calls == []
     assert fake_repository.bulk_archive_calls == []
+    assert fake_repository.audit_calls == []
 
 
 def test_archive_matching_workspaces_route_rejects_changed_total() -> None:
@@ -497,6 +543,7 @@ def test_archive_matching_workspaces_route_rejects_changed_total() -> None:
     }
     assert fake_repository.list_calls == [(None, 2, 0, None, False)]
     assert fake_repository.bulk_archive_calls == []
+    assert fake_repository.audit_calls == []
 
 
 def test_archive_matching_workspaces_route_allows_zero_matches() -> None:
@@ -519,6 +566,7 @@ def test_archive_matching_workspaces_route_allows_zero_matches() -> None:
     assert response.status_code == 200
     assert fake_repository.list_calls == [(None, 1, 0, "missing", False)]
     assert fake_repository.bulk_archive_calls == []
+    assert fake_repository.audit_calls == []
     assert response.json() == {
         "action": "archive_matching",
         "requested_count": 0,
@@ -553,7 +601,18 @@ def test_restore_matching_workspaces_route_restores_current_query() -> None:
     assert fake_repository.list_calls == [(None, 2, 0, None, True)]
     workspace_ids, commit = fake_repository.bulk_restore_calls[0]
     assert workspace_ids == ["tenant-a", "tenant-b"]
-    assert commit is True
+    assert commit is False
+    assert_workspace_audit_call(
+        fake_repository,
+        action="restore_matching",
+        workspace_ids=["tenant-a", "tenant-b"],
+        metadata={
+            "mode": "matching_query",
+            "q": None,
+            "status": "archived",
+            "expected_total": 2,
+        },
+    )
     body = response.json()
     assert body["action"] == "restore_matching"
     assert body["requested_count"] == 2
@@ -590,6 +649,18 @@ def test_restore_matching_workspaces_route_filters_to_allowed_workspaces() -> No
         (frozenset({"tenant-a"}), 1, 0, None, True)
     ]
     assert fake_repository.bulk_restore_calls[0][0] == ["tenant-a"]
+    assert_workspace_audit_call(
+        fake_repository,
+        action="restore_matching",
+        workspace_ids=["tenant-a"],
+        metadata={
+            "mode": "matching_query",
+            "q": None,
+            "status": "archived",
+            "expected_total": 1,
+        },
+        token="tenant-key",
+    )
 
 
 def test_get_workspace_route_returns_workspace() -> None:
@@ -738,7 +809,16 @@ def test_archive_workspace_route_archives_workspace() -> None:
     workspace_input, commit = fake_repository.archive_calls[0]
     assert workspace_input.id == "tenant-a"
     assert workspace_input.reason == "Retired tenant"
-    assert commit is True
+    assert commit is False
+    assert_workspace_audit_call(
+        fake_repository,
+        action="archive",
+        workspace_ids=["tenant-a"],
+        metadata={
+            "mode": "single_workspace",
+            "reason": "Retired tenant",
+        },
+    )
     body = response.json()
     assert body["workspace"]["archived_at"] == "2026-05-20T08:00:00Z"
     assert body["workspace"]["archived_reason"] == "Retired tenant"
@@ -756,6 +836,15 @@ def test_archive_workspace_route_accepts_empty_body() -> None:
     assert response.status_code == 200
     workspace_input, _ = fake_repository.archive_calls[0]
     assert workspace_input.reason is None
+    assert_workspace_audit_call(
+        fake_repository,
+        action="archive",
+        workspace_ids=["tenant-a"],
+        metadata={
+            "mode": "single_workspace",
+            "reason": None,
+        },
+    )
 
 
 def test_archive_workspace_route_returns_404_for_missing_workspace() -> None:
@@ -771,6 +860,7 @@ def test_archive_workspace_route_returns_404_for_missing_workspace() -> None:
     assert response.status_code == 404
     assert response.json() == {"detail": "workspace not found"}
     assert fake_repository.archive_calls[0][0].id == "tenant-a"
+    assert fake_repository.audit_calls == []
 
 
 def test_archive_workspace_route_rejects_forbidden_workspace() -> None:
@@ -792,6 +882,7 @@ def test_archive_workspace_route_rejects_forbidden_workspace() -> None:
     assert response.status_code == 403
     assert response.json() == {"detail": "workspace access denied"}
     assert fake_repository.archive_calls == []
+    assert fake_repository.audit_calls == []
 
 
 def test_bulk_archive_workspaces_route_archives_workspaces() -> None:
@@ -817,7 +908,17 @@ def test_bulk_archive_workspaces_route_archives_workspaces() -> None:
         "Cleanup",
         "Cleanup",
     ]
-    assert commit is True
+    assert commit is False
+    assert_workspace_audit_call(
+        fake_repository,
+        action="archive",
+        workspace_ids=["tenant-a", "tenant-b"],
+        metadata={
+            "mode": "explicit_ids",
+            "requested_count": 2,
+            "reason": "Cleanup",
+        },
+    )
     body = response.json()
     assert body["action"] == "archive"
     assert body["requested_count"] == 2
@@ -847,6 +948,7 @@ def test_bulk_archive_workspaces_route_rejects_forbidden_workspace() -> None:
     assert response.status_code == 403
     assert response.json() == {"detail": "workspace access denied"}
     assert fake_repository.bulk_archive_calls == []
+    assert fake_repository.audit_calls == []
 
 
 def test_bulk_archive_workspaces_route_returns_missing_workspace_ids() -> None:
@@ -867,6 +969,7 @@ def test_bulk_archive_workspaces_route_returns_missing_workspace_ids() -> None:
         }
     }
     assert fake_repository.bulk_archive_calls
+    assert fake_repository.audit_calls == []
 
 
 def test_restore_workspace_route_restores_workspace() -> None:
@@ -879,7 +982,13 @@ def test_restore_workspace_route_restores_workspace() -> None:
     response = client.post("/workspaces/tenant-a/restore", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
-    assert fake_repository.restore_calls == [("tenant-a", True)]
+    assert fake_repository.restore_calls == [("tenant-a", False)]
+    assert_workspace_audit_call(
+        fake_repository,
+        action="restore",
+        workspace_ids=["tenant-a"],
+        metadata={"mode": "single_workspace"},
+    )
     assert response.json()["workspace"]["archived_at"] is None
     assert response.json()["workspace"]["archived_reason"] is None
 
@@ -892,7 +1001,8 @@ def test_restore_workspace_route_returns_404_for_missing_workspace() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "workspace not found"}
-    assert fake_repository.restore_calls == [("tenant-a", True)]
+    assert fake_repository.restore_calls == [("tenant-a", False)]
+    assert fake_repository.audit_calls == []
 
 
 def test_bulk_restore_workspaces_route_restores_workspaces() -> None:
@@ -908,7 +1018,16 @@ def test_bulk_restore_workspaces_route_restores_workspaces() -> None:
     assert response.status_code == 200
     workspace_ids, commit = fake_repository.bulk_restore_calls[0]
     assert workspace_ids == ["tenant-a", "tenant-b"]
-    assert commit is True
+    assert commit is False
+    assert_workspace_audit_call(
+        fake_repository,
+        action="restore",
+        workspace_ids=["tenant-a", "tenant-b"],
+        metadata={
+            "mode": "explicit_ids",
+            "requested_count": 2,
+        },
+    )
     body = response.json()
     assert body["action"] == "restore"
     assert body["requested_count"] == 2
@@ -938,6 +1057,7 @@ def test_bulk_restore_workspaces_route_returns_missing_workspace_ids() -> None:
         }
     }
     assert fake_repository.bulk_restore_calls
+    assert fake_repository.audit_calls == []
 
 
 def test_bulk_workspace_routes_reject_empty_ids() -> None:
@@ -952,6 +1072,7 @@ def test_bulk_workspace_routes_reject_empty_ids() -> None:
 
     assert response.status_code == 422
     assert fake_repository.bulk_archive_calls == []
+    assert fake_repository.audit_calls == []
 
 
 def test_workspaces_routes_require_api_key() -> None:

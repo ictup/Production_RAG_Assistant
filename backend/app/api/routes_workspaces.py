@@ -1,11 +1,14 @@
+from hashlib import sha256
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
 from backend.app.api.workspace_validation import get_workspace_repository
+from backend.app.core.request_id import get_request_id
 from backend.app.db.repositories import (
     ArchiveWorkspaceInput,
+    CreateWorkspaceAuditLogInput,
     CreateWorkspaceInput,
     UpdateWorkspaceInput,
     WorkspaceListResult,
@@ -127,6 +130,7 @@ async def preview_bulk_workspaces(
 )
 async def archive_matching_workspaces(
     request: BulkArchiveMatchingWorkspacesRequest,
+    http_request: Request,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> BulkWorkspaceOperationResponse:
@@ -148,9 +152,24 @@ async def archive_matching_workspaces(
             ArchiveWorkspaceInput(id=workspace.id, reason=request.reason)
             for workspace in matching_result.workspaces
         ],
-        commit=True,
+        commit=False,
     )
     raise_for_missing_bulk_workspaces(result.missing_ids)
+    await record_workspace_operation_audit(
+        repository=repository,
+        principal=principal,
+        request_id=get_request_id(http_request),
+        action="archive_matching",
+        workspace_ids=[workspace.id for workspace in result.workspaces],
+        metadata={
+            "mode": "matching_query",
+            "q": request.q,
+            "status": request.status,
+            "expected_total": request.expected_total,
+            "reason": request.reason,
+        },
+        commit=True,
+    )
     return BulkWorkspaceOperationResponse.from_result(
         action="archive_matching",
         requested_count=len(matching_result.workspaces),
@@ -164,6 +183,7 @@ async def archive_matching_workspaces(
 )
 async def restore_matching_workspaces(
     request: BulkRestoreMatchingWorkspacesRequest,
+    http_request: Request,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> BulkWorkspaceOperationResponse:
@@ -182,9 +202,23 @@ async def restore_matching_workspaces(
 
     result = await repository.restore_workspaces(
         workspace_ids=[workspace.id for workspace in matching_result.workspaces],
-        commit=True,
+        commit=False,
     )
     raise_for_missing_bulk_workspaces(result.missing_ids)
+    await record_workspace_operation_audit(
+        repository=repository,
+        principal=principal,
+        request_id=get_request_id(http_request),
+        action="restore_matching",
+        workspace_ids=[workspace.id for workspace in result.workspaces],
+        metadata={
+            "mode": "matching_query",
+            "q": request.q,
+            "status": request.status,
+            "expected_total": request.expected_total,
+        },
+        commit=True,
+    )
     return BulkWorkspaceOperationResponse.from_result(
         action="restore_matching",
         requested_count=len(matching_result.workspaces),
@@ -231,6 +265,7 @@ async def load_confirmed_matching_workspaces(
 )
 async def archive_workspaces(
     request: BulkArchiveWorkspacesRequest,
+    http_request: Request,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> BulkWorkspaceOperationResponse:
@@ -240,9 +275,22 @@ async def archive_workspaces(
             ArchiveWorkspaceInput(id=workspace_id, reason=request.reason)
             for workspace_id in workspace_ids
         ],
-        commit=True,
+        commit=False,
     )
     raise_for_missing_bulk_workspaces(result.missing_ids)
+    await record_workspace_operation_audit(
+        repository=repository,
+        principal=principal,
+        request_id=get_request_id(http_request),
+        action="archive",
+        workspace_ids=[workspace.id for workspace in result.workspaces],
+        metadata={
+            "mode": "explicit_ids",
+            "requested_count": len(workspace_ids),
+            "reason": request.reason,
+        },
+        commit=True,
+    )
     return BulkWorkspaceOperationResponse.from_result(
         action="archive",
         requested_count=len(workspace_ids),
@@ -256,15 +304,28 @@ async def archive_workspaces(
 )
 async def restore_workspaces(
     request: BulkRestoreWorkspacesRequest,
+    http_request: Request,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> BulkWorkspaceOperationResponse:
     workspace_ids = resolve_bulk_workspace_ids(principal, request.ids)
     result = await repository.restore_workspaces(
         workspace_ids=workspace_ids,
-        commit=True,
+        commit=False,
     )
     raise_for_missing_bulk_workspaces(result.missing_ids)
+    await record_workspace_operation_audit(
+        repository=repository,
+        principal=principal,
+        request_id=get_request_id(http_request),
+        action="restore",
+        workspace_ids=[workspace.id for workspace in result.workspaces],
+        metadata={
+            "mode": "explicit_ids",
+            "requested_count": len(workspace_ids),
+        },
+        commit=True,
+    )
     return BulkWorkspaceOperationResponse.from_result(
         action="restore",
         requested_count=len(workspace_ids),
@@ -296,6 +357,32 @@ def raise_for_missing_bulk_workspaces(missing_ids: list[str]) -> None:
             "workspace_ids": missing_ids,
         },
     )
+
+
+async def record_workspace_operation_audit(
+    *,
+    repository: WorkspaceRepository,
+    principal: ApiPrincipal,
+    request_id: str,
+    action: str,
+    workspace_ids: list[str],
+    metadata: dict,
+    commit: bool,
+) -> None:
+    await repository.create_workspace_audit_log(
+        CreateWorkspaceAuditLogInput(
+            request_id=request_id,
+            actor_hash=hash_principal_token(principal),
+            action=action,
+            workspace_ids=workspace_ids,
+            metadata=metadata,
+        ),
+        commit=commit,
+    )
+
+
+def hash_principal_token(principal: ApiPrincipal) -> str:
+    return sha256(principal.token.encode("utf-8")).hexdigest()
 
 
 @router.get("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
@@ -345,6 +432,7 @@ async def update_workspace(
 @router.post("/workspaces/{workspace_id}/archive", response_model=WorkspaceResponse)
 async def archive_workspace(
     workspace_id: str,
+    http_request: Request,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
     request: ArchiveWorkspaceRequest | None = None,
@@ -355,30 +443,52 @@ async def archive_workspace(
             id=normalized_workspace_id,
             reason=request.reason if request is not None else None,
         ),
-        commit=True,
+        commit=False,
     )
     if archived_workspace is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="workspace not found",
         )
+    await record_workspace_operation_audit(
+        repository=repository,
+        principal=principal,
+        request_id=get_request_id(http_request),
+        action="archive",
+        workspace_ids=[archived_workspace.id],
+        metadata={
+            "mode": "single_workspace",
+            "reason": request.reason if request is not None else None,
+        },
+        commit=True,
+    )
     return WorkspaceResponse.from_model(archived_workspace)
 
 
 @router.post("/workspaces/{workspace_id}/restore", response_model=WorkspaceResponse)
 async def restore_workspace(
     workspace_id: str,
+    http_request: Request,
     principal: Annotated[ApiPrincipal, Depends(require_api_key)],
     repository: Annotated[WorkspaceRepository, Depends(get_workspace_repository)],
 ) -> WorkspaceResponse:
     normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
     restored_workspace = await repository.restore_workspace(
         workspace_id=normalized_workspace_id,
-        commit=True,
+        commit=False,
     )
     if restored_workspace is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="workspace not found",
         )
+    await record_workspace_operation_audit(
+        repository=repository,
+        principal=principal,
+        request_id=get_request_id(http_request),
+        action="restore",
+        workspace_ids=[restored_workspace.id],
+        metadata={"mode": "single_workspace"},
+        commit=True,
+    )
     return WorkspaceResponse.from_model(restored_workspace)

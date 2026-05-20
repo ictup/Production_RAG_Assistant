@@ -14,6 +14,7 @@ from backend.app.db.models import (
     Document,
     DocumentChunk,
     Workspace,
+    WorkspaceAuditLog,
 )
 from backend.app.rag.embeddings import validate_embedding_batch
 from ingestion.hashing import compute_content_hash
@@ -86,6 +87,15 @@ class UpdateWorkspaceInput:
 class ArchiveWorkspaceInput:
     id: str
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class CreateWorkspaceAuditLogInput:
+    request_id: str
+    actor_hash: str
+    action: str
+    workspace_ids: Sequence[str]
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -406,6 +416,50 @@ class WorkspaceRepository:
             workspaces=restored_workspaces,
             missing_ids=[],
         )
+
+    async def create_workspace_audit_log(
+        self,
+        audit_input: CreateWorkspaceAuditLogInput,
+        *,
+        commit: bool = False,
+    ) -> WorkspaceAuditLog:
+        request_id = audit_input.request_id.strip()
+        actor_hash = audit_input.actor_hash.strip()
+        action = audit_input.action.strip()
+
+        if not request_id:
+            raise ValueError("request_id must not be blank")
+        if not actor_hash:
+            raise ValueError("actor_hash must not be blank")
+        if not action:
+            raise ValueError("action must not be blank")
+
+        workspace_ids: list[str] = []
+        seen_ids: set[str] = set()
+        for workspace_id in audit_input.workspace_ids:
+            normalized_id = workspace_id.strip()
+            if not normalized_id:
+                raise ValueError("workspace id must not be blank")
+            if normalized_id not in seen_ids:
+                workspace_ids.append(normalized_id)
+                seen_ids.add(normalized_id)
+        if not workspace_ids:
+            raise ValueError("workspace ids must not be empty")
+
+        audit_log = WorkspaceAuditLog(
+            id=uuid.uuid4(),
+            request_id=request_id,
+            actor_hash=actor_hash,
+            action=action,
+            workspace_ids=workspace_ids,
+            workspace_count=len(workspace_ids),
+            metadata_=dict(audit_input.metadata or {}),
+        )
+        self.session.add(audit_log)
+        await self.session.flush()
+        if commit:
+            await self.session.commit()
+        return audit_log
 
 
 class DocumentRepository:
