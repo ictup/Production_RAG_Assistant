@@ -26,6 +26,8 @@ def test_static_app_serves_index_html() -> None:
     assert 'id="reload-admin"' in response.text
     assert 'id="admin-filter-form"' in response.text
     assert 'id="admin-request-id"' in response.text
+    assert 'id="export-admin-jsonl"' in response.text
+    assert 'id="export-admin-csv"' in response.text
     assert 'id="admin-prev-logs"' in response.text
     assert 'id="admin-workspace-list"' in response.text
     assert 'id="admin-log-list"' in response.text
@@ -43,6 +45,9 @@ def test_static_app_serves_assets() -> None:
     assert "reindexDocuments" in script_response.text
     assert "loadAdminOverview" in script_response.text
     assert "buildChatLogsUrl" in script_response.text
+    assert "buildChatLogsExportUrl" in script_response.text
+    assert "exportAdminLogs" in script_response.text
+    assert "/chat/logs/export?" in script_response.text
     assert "readAdminFilters" in script_response.text
     assert "refusal_only" in script_response.text
     assert "buildChatLogAuditDetails" in script_response.text
@@ -59,6 +64,7 @@ def test_static_app_serves_assets() -> None:
     assert ".knowledge-panel" in style_response.text
     assert ".admin-panel" in style_response.text
     assert ".admin-filter-form" in style_response.text
+    assert ".admin-export-actions" in style_response.text
     assert ".admin-pagination" in style_response.text
     assert ".admin-stat" in style_response.text
     assert ".admin-item" in style_response.text

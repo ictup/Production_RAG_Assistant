@@ -26,8 +26,8 @@ real provider key is available.
   latency metrics, token metrics, and cost estimates.
 - Deterministic eval gate with JSONL datasets and trend recording.
 - Minimal web UI at `/app/` with sessions, history, SSE chat, document upload,
-  reindex actions, admin overview, audit filters, audit details, and chat error
-  recovery.
+  reindex actions, admin overview, audit filters, audit export, audit details,
+  and chat error recovery.
 - Dockerfile, production-style Compose stack, deployment runbook, and CI
   workflow.
 
@@ -148,7 +148,7 @@ Run the eval gate:
 uv run python -m evals.run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `451 passed`.
+Current local baseline: `454 passed`.
 
 ## Configuration Model
 

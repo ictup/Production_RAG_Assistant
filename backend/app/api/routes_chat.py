@@ -1,11 +1,13 @@
+import csv
 import logging
 import uuid
 from collections.abc import AsyncIterator
+from io import StringIO
 from json import dumps as json_dumps
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.security import ApiPrincipal, require_api_key, resolve_workspace_id
@@ -37,6 +39,21 @@ from backend.app.schemas.chat import ChatLogsResponse, ChatRequest, ChatResponse
 router = APIRouter(tags=["chat"])
 PROVIDER_LOGGER_NAME = "backend.provider"
 CHAT_STREAM_MEDIA_TYPE = "text/event-stream"
+CHAT_LOG_EXPORT_FIELDS = (
+    "id",
+    "request_id",
+    "workspace_id",
+    "session_id",
+    "question",
+    "answer",
+    "sources",
+    "retrieval",
+    "usage",
+    "refusal",
+    "citation_valid",
+    "latency_ms",
+    "created_at",
+)
 PROVIDER_ERROR_STATUS_BY_CATEGORY = {
     "authentication": 502,
     "permission": 502,
@@ -93,6 +110,59 @@ def build_chat_log_input(
         latency_ms=response.usage.latency_ms,
         session_id=session_id,
     )
+
+
+def build_chat_log_export_record(chat_log: ChatLog) -> dict[str, object]:
+    return {
+        "id": str(chat_log.id),
+        "request_id": chat_log.request_id,
+        "workspace_id": chat_log.workspace_id,
+        "session_id": str(chat_log.session_id) if chat_log.session_id else None,
+        "question": chat_log.question,
+        "answer": chat_log.answer,
+        "sources": list(chat_log.sources),
+        "retrieval": dict(chat_log.retrieval),
+        "usage": dict(chat_log.usage),
+        "refusal": dict(chat_log.refusal) if chat_log.refusal is not None else None,
+        "citation_valid": chat_log.citation_valid,
+        "latency_ms": chat_log.latency_ms,
+        "created_at": chat_log.created_at.isoformat(),
+    }
+
+
+def serialize_chat_logs_jsonl(logs: list[ChatLog]) -> str:
+    lines = [
+        json_dumps(
+            build_chat_log_export_record(chat_log),
+            ensure_ascii=False,
+            default=str,
+        )
+        for chat_log in logs
+    ]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def serialize_csv_cell(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json_dumps(value, ensure_ascii=False, default=str)
+    return str(value)
+
+
+def serialize_chat_logs_csv(logs: list[ChatLog]) -> str:
+    output = StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=CHAT_LOG_EXPORT_FIELDS)
+    writer.writeheader()
+    for chat_log in logs:
+        record = build_chat_log_export_record(chat_log)
+        writer.writerow(
+            {
+                field: serialize_csv_cell(record[field])
+                for field in CHAT_LOG_EXPORT_FIELDS
+            }
+        )
+    return output.getvalue()
 
 
 async def resolve_chat_session_id(
@@ -522,4 +592,50 @@ async def list_chat_logs(
         limit=limit,
         offset=offset,
         logs=logs,
+    )
+
+
+@router.get("/chat/logs/export")
+async def export_chat_logs(
+    principal: Annotated[ApiPrincipal, Depends(require_api_key)],
+    chat_log_repository: Annotated[
+        ChatLogRepository,
+        Depends(get_chat_log_repository),
+    ],
+    workspace_id: Annotated[str | None, Header(alias="X-Workspace-ID")] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 1000,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    session_id: Annotated[uuid.UUID | None, Query()] = None,
+    request_id: Annotated[str | None, Query(min_length=1, max_length=256)] = None,
+    refusal_only: bool = False,
+    citation_valid: Annotated[bool | None, Query()] = None,
+    export_format: Annotated[
+        Literal["jsonl", "csv"],
+        Query(alias="format"),
+    ] = "jsonl",
+) -> Response:
+    normalized_workspace_id = resolve_workspace_id(principal, workspace_id)
+    logs = await chat_log_repository.list_recent_chat_logs(
+        workspace_id=normalized_workspace_id,
+        limit=limit,
+        offset=offset,
+        session_id=session_id,
+        request_id=request_id,
+        refusal_only=refusal_only,
+        citation_valid=citation_valid,
+    )
+    filename = f"chat-logs-{normalized_workspace_id}.{export_format}"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    if export_format == "csv":
+        return Response(
+            content=serialize_chat_logs_csv(logs),
+            media_type="text/csv; charset=utf-8",
+            headers=headers,
+        )
+    return Response(
+        content=serialize_chat_logs_jsonl(logs),
+        media_type="application/x-ndjson; charset=utf-8",
+        headers=headers,
     )

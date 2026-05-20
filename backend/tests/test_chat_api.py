@@ -886,6 +886,7 @@ def test_openapi_exposes_chat_route() -> None:
     assert response.status_code == 200
     assert "/chat" in response.json()["paths"]
     assert "/chat/stream" in response.json()["paths"]
+    assert "/chat/logs/export" in response.json()["paths"]
 
 
 def test_chat_logs_route_returns_recent_logs_for_workspace() -> None:
@@ -1019,3 +1020,91 @@ def test_chat_logs_route_forwards_audit_filters() -> None:
         }
     ]
     assert response.json()["offset"] == 10
+
+
+def test_chat_logs_export_route_returns_jsonl_with_filters() -> None:
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository(
+        recent_logs=[make_chat_log_model()]
+    )
+    client = build_client(fake_pipeline, fake_chat_log_repository)
+    session_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+
+    response = client.get(
+        "/chat/logs/export",
+        headers={
+            **AUTH_HEADERS,
+            "X-Workspace-ID": "tenant-a",
+        },
+        params={
+            "format": "jsonl",
+            "limit": 25,
+            "offset": 50,
+            "session_id": str(session_id),
+            "request_id": "request-1",
+            "refusal_only": "true",
+            "citation_valid": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "application/x-ndjson" in response.headers["content-type"]
+    assert 'filename="chat-logs-tenant-a.jsonl"' in response.headers[
+        "content-disposition"
+    ]
+    assert fake_chat_log_repository.list_calls == [
+        {
+            "workspace_id": "tenant-a",
+            "limit": 25,
+            "offset": 50,
+            "session_id": session_id,
+            "request_id": "request-1",
+            "refusal_only": True,
+            "citation_valid": True,
+        }
+    ]
+    exported = json.loads(response.text.strip())
+    assert exported["request_id"] == "request-1"
+    assert exported["workspace_id"] == "tenant-a"
+    assert exported["sources"] == [{"source_id": "1", "title": "FlashAttention Notes"}]
+    assert exported["retrieval"] == {"mode": "hybrid_rrf_rerank"}
+    assert exported["created_at"] == "2026-05-18T08:00:00+00:00"
+
+
+def test_chat_logs_export_route_returns_csv() -> None:
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository(
+        recent_logs=[make_chat_log_model()]
+    )
+    client = build_client(fake_pipeline, fake_chat_log_repository)
+
+    response = client.get(
+        "/chat/logs/export",
+        headers=AUTH_HEADERS,
+        params={"format": "csv"},
+    )
+
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert 'filename="chat-logs-public.csv"' in response.headers[
+        "content-disposition"
+    ]
+    assert "request_id,workspace_id" in response.text
+    assert "request-1" in response.text
+    assert "FlashAttention reduces memory traffic. [1]" in response.text
+    assert '"{""mode"": ""hybrid_rrf_rerank""}"' in response.text
+
+
+def test_chat_logs_export_route_rejects_invalid_format() -> None:
+    fake_pipeline = FakePipeline()
+    fake_chat_log_repository = FakeChatLogRepository()
+    client = build_client(fake_pipeline, fake_chat_log_repository)
+
+    response = client.get(
+        "/chat/logs/export",
+        headers=AUTH_HEADERS,
+        params={"format": "xml"},
+    )
+
+    assert response.status_code == 422
+    assert fake_chat_log_repository.list_calls == []

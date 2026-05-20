@@ -53,6 +53,8 @@ const els = {
   adminCitationValid: document.querySelector("#admin-citation-valid"),
   adminRefusalOnly: document.querySelector("#admin-refusal-only"),
   clearAdminFilters: document.querySelector("#clear-admin-filters"),
+  exportAdminJsonl: document.querySelector("#export-admin-jsonl"),
+  exportAdminCsv: document.querySelector("#export-admin-csv"),
   adminWorkspaceList: document.querySelector("#admin-workspace-list"),
   adminPrevLogs: document.querySelector("#admin-prev-logs"),
   adminNextLogs: document.querySelector("#admin-next-logs"),
@@ -137,6 +139,14 @@ function bindEvents() {
   els.clearAdminFilters.addEventListener("click", () => {
     clearAdminFilters();
     void loadAdminOverview();
+  });
+
+  els.exportAdminJsonl.addEventListener("click", () => {
+    void exportAdminLogs("jsonl");
+  });
+
+  els.exportAdminCsv.addEventListener("click", () => {
+    void exportAdminLogs("csv");
   });
 
   els.adminPrevLogs.addEventListener("click", () => {
@@ -243,9 +253,26 @@ async function loadAdminOverview() {
 }
 
 function buildChatLogsUrl() {
+  const params = buildChatLogParams({
+    limit: state.admin.logLimit,
+    offset: state.admin.logOffset,
+  });
+  return `/chat/logs?${params.toString()}`;
+}
+
+function buildChatLogsExportUrl(format) {
+  const params = buildChatLogParams({
+    limit: 1000,
+    offset: 0,
+  });
+  params.set("format", format);
+  return `/chat/logs/export?${params.toString()}`;
+}
+
+function buildChatLogParams({ limit, offset }) {
   const params = new URLSearchParams({
-    limit: String(state.admin.logLimit),
-    offset: String(state.admin.logOffset),
+    limit: String(limit),
+    offset: String(offset),
   });
   if (state.admin.filters.requestId) {
     params.set("request_id", state.admin.filters.requestId);
@@ -259,7 +286,7 @@ function buildChatLogsUrl() {
   if (state.admin.filters.refusalOnly) {
     params.set("refusal_only", "true");
   }
-  return `/chat/logs?${params.toString()}`;
+  return params;
 }
 
 function readAdminFilters() {
@@ -283,6 +310,36 @@ function clearAdminFilters() {
   els.adminSessionId.value = "";
   els.adminCitationValid.value = "";
   els.adminRefusalOnly.checked = false;
+}
+
+async function exportAdminLogs(format) {
+  readAdminFilters();
+  const extension = format === "csv" ? "csv" : "jsonl";
+  setAdminStatus(`Exporting ${extension.toUpperCase()}`);
+  try {
+    const response = await apiFetch(buildChatLogsExportUrl(extension));
+    const blob = await response.blob();
+    downloadBlob(
+      blob,
+      `rag-chat-logs-${formatFilenamePart(state.workspaceId)}-${formatTimestampForFilename(
+        new Date(),
+      )}.${extension}`,
+    );
+    setAdminStatus(`Exported ${extension.toUpperCase()}`);
+  } catch (error) {
+    setAdminError(error.message);
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 async function loadMarkdownFile() {
@@ -1008,6 +1065,14 @@ function formatTimestamp(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatTimestampForFilename(date) {
+  return date.toISOString().replace(/[:.]/g, "-");
+}
+
+function formatFilenamePart(value) {
+  return String(value || "public").replace(/[^a-z0-9_-]+/gi, "-");
 }
 
 function buildHttpError(response, body, fallbackMessage) {

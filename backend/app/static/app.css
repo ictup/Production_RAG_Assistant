@@ -513,6 +513,7 @@ textarea:focus {
   min-height: 16px;
 }
 
+.admin-export-actions,
 .admin-filter-actions,
 .admin-pagination {
   display: grid;
@@ -529,6 +530,11 @@ textarea:focus {
   border-color: var(--accent);
   background: var(--accent);
   color: #ffffff;
+  font-weight: 750;
+}
+
+.admin-export-actions button {
+  color: var(--accent-dark);
   font-weight: 750;
 }
 
