@@ -65,6 +65,7 @@ class AgentTriageResponse(BaseModel):
     sources: list[dict[str, Any]] = Field(default_factory=list)
     retrieval_context: str | None = None
     retrieval: dict[str, Any] = Field(default_factory=dict)
+    historical_cases: list[dict[str, Any]] = Field(default_factory=list)
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     metrics: dict[str, Any] = Field(default_factory=dict)
     trace_id: str | None = None

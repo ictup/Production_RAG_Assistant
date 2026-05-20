@@ -2,8 +2,10 @@ import time
 
 from backend.app.agent.policies import check_support_risk, classify_ticket
 from backend.app.agent.rag_search import RAGSearchInput, rag_search_tool
+from backend.app.agent.ticket_lookup import TicketLookupInput, ticket_lookup_tool
 from backend.app.agent.tools import ToolCallRecord
 from backend.app.core.tracing import trace_span
+from backend.app.db.repositories import SupportTicketRepository
 from backend.app.rag.pipeline import RagPipeline
 from backend.app.schemas.agent import AgentTriageResponse, SupportTicketRequest
 
@@ -16,6 +18,7 @@ async def run_support_triage_skeleton(
     request: SupportTicketRequest,
     *,
     rag_pipeline: RagPipeline,
+    support_ticket_repository: SupportTicketRepository,
     request_id: str,
     trace_id: str | None = None,
 ) -> AgentTriageResponse:
@@ -156,18 +159,58 @@ async def run_support_triage_skeleton(
         for tool_call in tool_calls
     ]
     state["retrieved_sources"] = rag_search.sources
+
+    ticket_lookup_started_at = time.perf_counter()
+    with trace_span(
+        "agent.ticket_lookup",
+        {
+            "workspace_id": request.workspace_id,
+            "category": classification.category,
+        },
+    ):
+        ticket_lookup = await ticket_lookup_tool(
+            TicketLookupInput(
+                query=request.customer_message,
+                workspace_id=request.workspace_id,
+                category=classification.category,
+                limit=5,
+            ),
+            repository=support_ticket_repository,
+        )
+    tool_calls.append(
+        ToolCallRecord(
+            tool_name="ticket_lookup_tool",
+            input_summary={
+                "query_length": len(request.customer_message),
+                "workspace_id": request.workspace_id,
+                "category": classification.category,
+                "limit": 5,
+            },
+            output_summary={
+                "case_count": len(ticket_lookup.cases),
+            },
+            latency_ms=elapsed_ms(ticket_lookup_started_at),
+            success=True,
+        )
+    )
+    tool_call_payloads = [
+        tool_call.model_dump(mode="json")
+        for tool_call in tool_calls
+    ]
+    state["historical_cases"] = ticket_lookup.cases
     state["tool_calls"] = tool_call_payloads
     state["metrics"] = {
         "latency_ms": elapsed_ms(started_at),
         "tool_count": len(tool_calls),
         "citation_valid": None,
         "retrieved_source_count": len(rag_search.sources),
+        "historical_case_count": len(ticket_lookup.cases),
         "rag_refusal_recommended": rag_search.refusal_recommended,
     }
 
     final_answer = (
         f"Ticket classified as {classification.category}. The next workflow "
-        "steps will search historical cases and draft a cited support response."
+        "step will draft a cited support response."
     )
     state["final_answer"] = final_answer
     return AgentTriageResponse(
@@ -181,6 +224,7 @@ async def run_support_triage_skeleton(
         sources=rag_search.sources,
         retrieval_context=rag_search.context,
         retrieval=rag_search.retrieval,
+        historical_cases=ticket_lookup.cases,
         tool_calls=tool_call_payloads,
         metrics=state["metrics"],
         trace_id=trace_id,

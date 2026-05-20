@@ -41,6 +41,15 @@ class FakeRagPipeline:
         )
 
 
+class FakeSupportTicketRepository:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def list_similar_support_tickets(self, **kwargs):
+        self.calls.append(dict(kwargs))
+        return []
+
+
 class FakeWorkspaceRepository:
     def __init__(
         self,
@@ -64,10 +73,12 @@ class FakeWorkspaceRepository:
 def build_client(
     settings: Settings | None = None,
     fake_pipeline: FakeRagPipeline | None = None,
+    fake_ticket_repository: FakeSupportTicketRepository | None = None,
     fake_workspace_repository: FakeWorkspaceRepository | None = None,
 ) -> TestClient:
     settings = settings or Settings(api_keys="dev-key")
     fake_pipeline = fake_pipeline or FakeRagPipeline()
+    fake_ticket_repository = fake_ticket_repository or FakeSupportTicketRepository()
     fake_workspace_repository = (
         fake_workspace_repository or FakeWorkspaceRepository()
     )
@@ -75,6 +86,9 @@ def build_client(
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[routes_agent.get_agent_rag_pipeline] = (
         lambda: fake_pipeline
+    )
+    app.dependency_overrides[routes_agent.get_support_ticket_repository] = (
+        lambda: fake_ticket_repository
     )
     app.dependency_overrides[routes_agent.get_workspace_repository] = (
         lambda: fake_workspace_repository
@@ -84,7 +98,11 @@ def build_client(
 
 def test_support_triage_route_returns_finalized_skeleton_response() -> None:
     fake_pipeline = FakeRagPipeline()
-    client = build_client(fake_pipeline=fake_pipeline)
+    fake_ticket_repository = FakeSupportTicketRepository()
+    client = build_client(
+        fake_pipeline=fake_pipeline,
+        fake_ticket_repository=fake_ticket_repository,
+    )
 
     response = client.post(
         "/agent/support-triage",
@@ -113,20 +131,35 @@ def test_support_triage_route_returns_finalized_skeleton_response() -> None:
         "[1] Citation Debugging\nInspect retrieved chunks."
     )
     assert body["retrieval"]["top_score"] == 0.92
-    assert body["metrics"]["tool_count"] == 3
+    assert body["historical_cases"] == []
+    assert body["metrics"]["tool_count"] == 4
     assert body["metrics"]["retrieved_source_count"] == 1
+    assert body["metrics"]["historical_case_count"] == 0
     assert [tool_call["tool_name"] for tool_call in body["tool_calls"]] == [
         "classify_ticket_tool",
         "risk_check_tool",
         "rag_search_tool",
+        "ticket_lookup_tool",
     ]
     assert len(fake_pipeline.requests) == 1
     assert fake_pipeline.requests[0].workspace_id == "public"
+    assert fake_ticket_repository.calls == [
+        {
+            "query": "How can I debug citation validation failures?",
+            "workspace_id": "public",
+            "category": "rag_failure",
+            "limit": 5,
+        }
+    ]
 
 
 def test_support_triage_route_returns_approval_required_for_high_risk_ticket() -> None:
     fake_pipeline = FakeRagPipeline()
-    client = build_client(fake_pipeline=fake_pipeline)
+    fake_ticket_repository = FakeSupportTicketRepository()
+    client = build_client(
+        fake_pipeline=fake_pipeline,
+        fake_ticket_repository=fake_ticket_repository,
+    )
 
     response = client.post(
         "/agent/support-triage",
@@ -150,7 +183,9 @@ def test_support_triage_route_returns_approval_required_for_high_risk_ticket() -
     assert body["final_answer"] is None
     assert body["sources"] == []
     assert body["retrieval"] == {}
+    assert body["historical_cases"] == []
     assert fake_pipeline.requests == []
+    assert fake_ticket_repository.calls == []
 
 
 def test_support_triage_route_requires_api_key() -> None:

@@ -9,6 +9,15 @@ from backend.app.rag.pipeline import RagRetrievalContext, RetrievalInfo
 from backend.app.schemas.agent import SupportTicketRequest
 
 
+class FakeSupportTicketRepository:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def list_similar_support_tickets(self, **kwargs):
+        self.calls.append(dict(kwargs))
+        return []
+
+
 class FakeRagPipeline:
     def __init__(self) -> None:
         self.requests = []
@@ -45,6 +54,7 @@ def test_build_agent_run_id_uses_request_id() -> None:
 @pytest.mark.asyncio
 async def test_support_triage_skeleton_finalizes_safe_ticket() -> None:
     fake_pipeline = FakeRagPipeline()
+    fake_ticket_repository = FakeSupportTicketRepository()
 
     response = await run_support_triage_skeleton(
         SupportTicketRequest(
@@ -52,6 +62,7 @@ async def test_support_triage_skeleton_finalizes_safe_ticket() -> None:
             customer_message="How can I debug citation validation failures?",
         ),
         rag_pipeline=fake_pipeline,  # type: ignore[arg-type]
+        support_ticket_repository=fake_ticket_repository,  # type: ignore[arg-type]
         request_id="request-1",
         trace_id="trace-1",
     )
@@ -69,21 +80,33 @@ async def test_support_triage_skeleton_finalizes_safe_ticket() -> None:
         "[1] Citation Debugging\nInspect retrieved chunks."
     )
     assert response.retrieval["top_score"] == 0.92
-    assert response.metrics["tool_count"] == 3
+    assert response.historical_cases == []
+    assert response.metrics["tool_count"] == 4
     assert response.metrics["retrieved_source_count"] == 1
+    assert response.metrics["historical_case_count"] == 0
     assert [tool_call["tool_name"] for tool_call in response.tool_calls] == [
         "classify_ticket_tool",
         "risk_check_tool",
         "rag_search_tool",
+        "ticket_lookup_tool",
     ]
     assert len(fake_pipeline.requests) == 1
     assert fake_pipeline.requests[0].workspace_id == "public"
     assert fake_pipeline.requests[0].rerank_top_n == 5
+    assert fake_ticket_repository.calls == [
+        {
+            "query": "How can I debug citation validation failures?",
+            "workspace_id": "public",
+            "category": "rag_failure",
+            "limit": 5,
+        }
+    ]
 
 
 @pytest.mark.asyncio
 async def test_support_triage_skeleton_routes_high_risk_ticket_to_approval() -> None:
     fake_pipeline = FakeRagPipeline()
+    fake_ticket_repository = FakeSupportTicketRepository()
 
     response = await run_support_triage_skeleton(
         SupportTicketRequest(
@@ -91,6 +114,7 @@ async def test_support_triage_skeleton_routes_high_risk_ticket_to_approval() -> 
             customer_message="Delete all logs containing customer prompts.",
         ),
         rag_pipeline=fake_pipeline,  # type: ignore[arg-type]
+        support_ticket_repository=fake_ticket_repository,  # type: ignore[arg-type]
         request_id="request-2",
     )
 
@@ -106,3 +130,4 @@ async def test_support_triage_skeleton_routes_high_risk_ticket_to_approval() -> 
     assert response.sources == []
     assert response.retrieval == {}
     assert fake_pipeline.requests == []
+    assert fake_ticket_repository.calls == []

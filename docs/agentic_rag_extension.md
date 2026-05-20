@@ -81,12 +81,11 @@ migration advice, and latency troubleshooting.
 ## Planned Next Steps
 
 1. Add the graph runner abstraction, initially without LangGraph.
-2. Add historical support ticket lookup.
-3. Add cited draft response generation.
-4. Add `support_tickets` and `agent_approvals` database tables.
-5. Add approval API endpoints.
-6. Add agent-specific Prometheus metrics.
-7. Add 30 support eval cases and an agent eval report.
+2. Add cited draft response generation.
+3. Add `agent_approvals` database table.
+4. Add approval API endpoints.
+5. Add agent-specific Prometheus metrics.
+6. Add 30 support eval cases and an agent eval report.
 
 ## Step 2 Scope
 
@@ -113,3 +112,17 @@ Low-risk tickets now call the existing RAG retriever through
 `RagPipeline.retrieve_context()`. The tool returns grounded sources, formatted
 retrieval context, top score, refusal recommendation, and retrieval metadata.
 High-risk tickets still stop before retrieval and return `approval_required`.
+
+## Step 4 Scope
+
+The fourth implementation step adds historical support ticket lookup:
+
+```text
+ticket_lookup_tool
+```
+
+The database now has a `support_tickets` table for historical cases. The lookup
+repository filters by workspace, category, query text, and optional tags. The
+agent low-risk path now calls `ticket_lookup_tool` after `rag_search_tool` and
+returns `historical_cases` in `AgentTriageResponse`. No write API is exposed for
+support tickets yet.

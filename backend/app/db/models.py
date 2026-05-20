@@ -19,7 +19,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     text as sql_text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 EMBEDDING_DIMENSION = 1536
@@ -182,6 +182,66 @@ export_jobs_status_created_at_idx = Index(
 export_jobs_request_id_idx = Index(
     "export_jobs_request_id_idx",
     ExportJob.request_id,
+)
+
+
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+    __table_args__ = (
+        UniqueConstraint("ticket_id", name="support_tickets_ticket_id_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    ticket_id: Mapped[str] = mapped_column(Text, nullable=False)
+    workspace_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("workspaces.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+        default="public",
+        server_default=sql_text("'public'"),
+    )
+    category: Mapped[str | None] = mapped_column(Text)
+    customer_message: Mapped[str] = mapped_column(Text, nullable=False)
+    resolution_summary: Mapped[str | None] = mapped_column(Text)
+    final_response: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text),
+        nullable=False,
+        default=list,
+        server_default=sql_text("'{}'::text[]"),
+    )
+    risk_level: Mapped[str | None] = mapped_column(Text)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=sql_text("'{}'::jsonb"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=sql_text("now()"),
+    )
+
+
+support_tickets_workspace_created_at_idx = Index(
+    "support_tickets_workspace_created_at_idx",
+    SupportTicket.workspace_id,
+    SupportTicket.created_at,
+)
+support_tickets_category_idx = Index(
+    "support_tickets_category_idx",
+    SupportTicket.category,
+)
+support_tickets_tags_idx = Index(
+    "support_tickets_tags_idx",
+    SupportTicket.tags,
+    postgresql_using="gin",
 )
 
 

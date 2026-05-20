@@ -10,6 +10,7 @@ from backend.app.db.models import (
     Document,
     DocumentChunk,
     ExportJob,
+    SupportTicket,
     Workspace,
     WorkspaceAuditLog,
 )
@@ -24,6 +25,7 @@ from backend.app.db.repositories import (
     CreateWorkspaceInput,
     DocumentRepository,
     ExportJobRepository,
+    SupportTicketRepository,
     UpdateWorkspaceInput,
     WorkspaceRepository,
 )
@@ -218,6 +220,22 @@ def make_export_job_model(*, status: str = "pending") -> ExportJob:
         updated_at=datetime(2026, 5, 20, 8, 0, tzinfo=UTC),
         started_at=None,
         completed_at=None,
+    )
+
+
+def make_support_ticket_model() -> SupportTicket:
+    return SupportTicket(
+        id=uuid.UUID("66666666-6666-6666-6666-666666666666"),
+        ticket_id="TICKET-1",
+        workspace_id="tenant-a",
+        category="rag_failure",
+        customer_message="The RAG answer has wrong citations.",
+        resolution_summary="Inspect retrieved chunks and citation validation.",
+        final_response="Check retrieved chunks and citation mappings.",
+        tags=["citations", "rag"],
+        risk_level="low",
+        metadata_={"source": "seed"},
+        created_at=datetime(2026, 5, 20, 8, 0, tzinfo=UTC),
     )
 
 
@@ -1012,6 +1030,71 @@ async def test_export_job_repository_rejects_invalid_state_transitions() -> None
             job_id=export_job.id,
             result_uri="file://exports/chat-logs-public.jsonl",
             result_media_type="application/x-ndjson",
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_similar_support_tickets_filters_core_fields() -> None:
+    ticket = make_support_ticket_model()
+    session = FakeAsyncSession(scalars_result=[ticket])
+    repository = SupportTicketRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.list_similar_support_tickets(
+        query=" citations ",
+        workspace_id=" tenant-a ",
+        category=" rag_failure ",
+        limit=3,
+    )
+
+    assert len(result) == 1
+    summary = result[0]
+    assert summary.id == ticket.id
+    assert summary.ticket_id == "TICKET-1"
+    assert summary.workspace_id == "tenant-a"
+    assert summary.category == "rag_failure"
+    assert summary.tags == ["citations", "rag"]
+    assert summary.metadata == {"source": "seed"}
+    assert session.scalars_statement is not None
+    compiled = str(session.scalars_statement)
+    assert "support_tickets.workspace_id" in compiled
+    assert "support_tickets.category" in compiled
+    assert "lower(support_tickets.customer_message)" in compiled
+    assert "ORDER BY support_tickets.created_at DESC" in compiled
+
+
+@pytest.mark.asyncio
+async def test_list_similar_support_tickets_filters_tags() -> None:
+    ticket = make_support_ticket_model()
+    session = FakeAsyncSession(scalars_result=[ticket])
+    repository = SupportTicketRepository(session)  # type: ignore[arg-type]
+
+    result = await repository.list_similar_support_tickets(
+        query="citations",
+        workspace_id="tenant-a",
+        tags=[" rag ", " "],
+    )
+
+    assert result[0].ticket_id == "TICKET-1"
+    assert session.scalars_statement is not None
+    assert "support_tickets.tags" in str(session.scalars_statement)
+
+
+@pytest.mark.asyncio
+async def test_list_similar_support_tickets_rejects_invalid_inputs() -> None:
+    session = FakeAsyncSession()
+    repository = SupportTicketRepository(session)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="workspace_id"):
+        await repository.list_similar_support_tickets(
+            query="citations",
+            workspace_id=" ",
+        )
+
+    with pytest.raises(ValueError, match="limit"):
+        await repository.list_similar_support_tickets(
+            query="citations",
+            workspace_id="tenant-a",
+            limit=0,
         )
 
 

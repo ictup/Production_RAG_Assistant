@@ -14,6 +14,9 @@ AUDIT_MIGRATION_PATH = Path(
 EXPORT_JOB_MIGRATION_PATH = Path(
     "backend/app/db/migrations/versions/0010_create_export_jobs.py"
 )
+SUPPORT_TICKETS_MIGRATION_PATH = Path(
+    "backend/app/db/migrations/versions/0011_create_support_tickets.py"
+)
 
 
 def test_workspace_foreign_key_migration_backfills_existing_workspace_ids() -> None:
@@ -87,6 +90,28 @@ def test_export_job_migration_adds_async_export_table() -> None:
     assert "export_jobs_workspace_created_at_idx" in migration
     assert "export_jobs_status_created_at_idx" in migration
     assert "export_jobs_request_id_idx" in migration
+    assert 'ondelete="RESTRICT"' in migration
+    assert 'onupdate="CASCADE"' in migration
+
+
+def test_support_tickets_migration_adds_historical_ticket_table() -> None:
+    migration = SUPPORT_TICKETS_MIGRATION_PATH.read_text(encoding="utf-8")
+
+    assert 'revision: str = "0011_support_tickets"' in migration
+    assert 'down_revision: str | None = "0010_export_jobs"' in migration
+    assert '"support_tickets"' in migration
+    assert '"ticket_id"' in migration
+    assert '"workspace_id"' in migration
+    assert '"customer_message"' in migration
+    assert '"resolution_summary"' in migration
+    assert '"final_response"' in migration
+    assert '"tags"' in migration
+    assert '"risk_level"' in migration
+    assert "support_tickets_ticket_id_key" in migration
+    assert "support_tickets_workspace_created_at_idx" in migration
+    assert "support_tickets_category_idx" in migration
+    assert "support_tickets_tags_idx" in migration
+    assert 'postgresql_using="gin"' in migration
     assert 'ondelete="RESTRICT"' in migration
     assert 'onupdate="CASCADE"' in migration
 

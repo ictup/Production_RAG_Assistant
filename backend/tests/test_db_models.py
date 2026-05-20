@@ -8,6 +8,7 @@ from backend.app.db.models import (
     Document,
     DocumentChunk,
     ExportJob,
+    SupportTicket,
     Workspace,
     WorkspaceAuditLog,
 )
@@ -18,6 +19,7 @@ def test_base_metadata_contains_core_document_tables() -> None:
         "workspaces",
         "workspace_audit_logs",
         "export_jobs",
+        "support_tickets",
         "documents",
         "document_chunks",
         "chat_sessions",
@@ -74,8 +76,36 @@ def test_export_job_has_lifecycle_columns_and_indexes() -> None:
     assert "export_jobs_request_id_idx" in index_names
 
 
+def test_support_ticket_has_lookup_columns_and_indexes() -> None:
+    constraints = {
+        constraint.name
+        for constraint in SupportTicket.__table__.constraints
+    }
+    index_names = {index.name for index in SupportTicket.__table__.indexes}
+
+    assert SupportTicket.__table__.c.ticket_id.nullable is False
+    assert SupportTicket.__table__.c.workspace_id.nullable is False
+    assert SupportTicket.__table__.c.customer_message.nullable is False
+    assert SupportTicket.__table__.c.resolution_summary.nullable is True
+    assert SupportTicket.__table__.c.final_response.nullable is True
+    assert SupportTicket.__table__.c.tags.nullable is False
+    assert SupportTicket.__table__.c.risk_level.nullable is True
+    assert SupportTicket.metadata_.name == "metadata"
+    assert "support_tickets_ticket_id_key" in constraints
+    assert "support_tickets_workspace_created_at_idx" in index_names
+    assert "support_tickets_category_idx" in index_names
+    assert "support_tickets_tags_idx" in index_names
+
+
 def test_workspace_scoped_tables_reference_workspace_registry() -> None:
-    for table in (Document, DocumentChunk, ChatSession, ChatLog, ExportJob):
+    for table in (
+        Document,
+        DocumentChunk,
+        ChatSession,
+        ChatLog,
+        ExportJob,
+        SupportTicket,
+    ):
         foreign_keys = list(table.__table__.c.workspace_id.foreign_keys)
 
         assert len(foreign_keys) == 1

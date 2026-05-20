@@ -14,6 +14,7 @@ from backend.app.db.models import (
     Document,
     DocumentChunk,
     ExportJob,
+    SupportTicket,
     Workspace,
     WorkspaceAuditLog,
 )
@@ -137,6 +138,37 @@ class WorkspaceAuditLogListResult:
 class ExportJobListResult:
     total: int
     jobs: list[ExportJob]
+
+
+@dataclass(frozen=True)
+class SupportTicketSummary:
+    id: uuid.UUID
+    ticket_id: str
+    workspace_id: str
+    category: str | None
+    customer_message: str
+    resolution_summary: str | None
+    final_response: str | None
+    tags: list[str]
+    risk_level: str | None
+    metadata: dict[str, Any]
+    created_at: datetime
+
+    @classmethod
+    def from_model(cls, ticket: SupportTicket) -> "SupportTicketSummary":
+        return cls(
+            id=ticket.id,
+            ticket_id=ticket.ticket_id,
+            workspace_id=ticket.workspace_id,
+            category=ticket.category,
+            customer_message=ticket.customer_message,
+            resolution_summary=ticket.resolution_summary,
+            final_response=ticket.final_response,
+            tags=list(ticket.tags),
+            risk_level=ticket.risk_level,
+            metadata=dict(ticket.metadata_),
+            created_at=ticket.created_at,
+        )
 
 
 @dataclass(frozen=True)
@@ -814,6 +846,76 @@ class ExportJobRepository:
         if job_id is None:
             raise ValueError("job_id is required")
         return await self.get_export_job(job_id=job_id)
+
+
+class SupportTicketRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def list_similar_support_tickets(
+        self,
+        *,
+        query: str,
+        workspace_id: str,
+        category: str | None = None,
+        tags: Sequence[str] | None = None,
+        limit: int = 5,
+    ) -> list[SupportTicketSummary]:
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+
+        filters = [
+            SupportTicket.workspace_id == require_text(workspace_id, "workspace_id")
+        ]
+        normalized_category = normalize_optional_text(category)
+        if normalized_category is not None:
+            filters.append(SupportTicket.category == normalized_category)
+
+        normalized_query = normalize_optional_text(query)
+        if normalized_query is not None:
+            filters.append(
+                or_(
+                    SupportTicket.ticket_id.icontains(
+                        normalized_query,
+                        autoescape=True,
+                    ),
+                    SupportTicket.customer_message.icontains(
+                        normalized_query,
+                        autoescape=True,
+                    ),
+                    SupportTicket.resolution_summary.icontains(
+                        normalized_query,
+                        autoescape=True,
+                    ),
+                    SupportTicket.final_response.icontains(
+                        normalized_query,
+                        autoescape=True,
+                    ),
+                )
+            )
+
+        normalized_tags = [
+            tag
+            for tag in (
+                normalize_optional_text(raw_tag)
+                for raw_tag in list(tags or [])
+            )
+            if tag is not None
+        ]
+        if normalized_tags:
+            filters.append(SupportTicket.tags.overlap(normalized_tags))
+
+        statement = (
+            select(SupportTicket)
+            .where(*filters)
+            .order_by(SupportTicket.created_at.desc(), SupportTicket.ticket_id.asc())
+            .limit(limit)
+        )
+        tickets = list((await self.session.scalars(statement)).all())
+        return [
+            SupportTicketSummary.from_model(ticket)
+            for ticket in tickets
+        ]
 
 
 class DocumentRepository:
