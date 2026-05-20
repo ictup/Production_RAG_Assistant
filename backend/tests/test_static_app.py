@@ -23,6 +23,9 @@ def test_static_app_serves_index_html() -> None:
     assert 'id="chat-form"' in response.text
     assert 'id="document-form"' in response.text
     assert 'id="reindex-dry-run"' in response.text
+    assert 'id="reload-admin"' in response.text
+    assert 'id="admin-workspace-list"' in response.text
+    assert 'id="admin-log-list"' in response.text
 
 
 def test_static_app_serves_assets() -> None:
@@ -35,11 +38,17 @@ def test_static_app_serves_assets() -> None:
     assert "const state" in script_response.text
     assert "uploadDocument" in script_response.text
     assert "reindexDocuments" in script_response.text
+    assert "loadAdminOverview" in script_response.text
+    assert "/workspaces?limit=20&offset=0" in script_response.text
+    assert "/chat/logs?limit=5" in script_response.text
     assert "renderMessageError" in script_response.text
     assert "providerErrorUserMessage" in script_response.text
     assert "Retry" in script_response.text
     assert style_response.status_code == 200
     assert ".chat-panel" in style_response.text
     assert ".knowledge-panel" in style_response.text
+    assert ".admin-panel" in style_response.text
+    assert ".admin-stat" in style_response.text
+    assert ".admin-item" in style_response.text
     assert ".message-error" in style_response.text
     assert ".retry-button" in style_response.text

@@ -4,6 +4,10 @@ const state = {
   sessionId: localStorage.getItem("rag.sessionId") || "",
   sessions: [],
   documents: [],
+  admin: {
+    workspaces: [],
+    logs: [],
+  },
   sending: false,
 };
 
@@ -31,6 +35,12 @@ const els = {
   reindexWrite: document.querySelector("#reindex-write"),
   documentStatus: document.querySelector("#document-status"),
   documentList: document.querySelector("#document-list"),
+  reloadAdmin: document.querySelector("#reload-admin"),
+  adminStatus: document.querySelector("#admin-status"),
+  adminWorkspaceCount: document.querySelector("#admin-workspace-count"),
+  adminLogCount: document.querySelector("#admin-log-count"),
+  adminWorkspaceList: document.querySelector("#admin-workspace-list"),
+  adminLogList: document.querySelector("#admin-log-list"),
 };
 
 function init() {
@@ -40,6 +50,7 @@ function init() {
   renderEmptyMessages();
   void loadSessions();
   void loadDocuments();
+  void loadAdminOverview();
 }
 
 function bindEvents() {
@@ -51,6 +62,12 @@ function bindEvents() {
   els.workspaceId.addEventListener("input", () => {
     state.workspaceId = els.workspaceId.value.trim() || "public";
     localStorage.setItem("rag.workspaceId", state.workspaceId);
+  });
+
+  els.workspaceId.addEventListener("change", () => {
+    void loadSessions();
+    void loadDocuments();
+    void loadAdminOverview();
   });
 
   els.newSession.addEventListener("click", () => {
@@ -85,6 +102,10 @@ function bindEvents() {
 
   els.reindexWrite.addEventListener("click", () => {
     void reindexDocuments(false);
+  });
+
+  els.reloadAdmin.addEventListener("click", () => {
+    void loadAdminOverview();
   });
 }
 
@@ -151,6 +172,30 @@ async function loadDocuments() {
     setDocumentStatus(`Loaded ${state.documents.length} document(s)`);
   } catch (error) {
     setDocumentError(error.message);
+  }
+}
+
+async function loadAdminOverview() {
+  setAdminStatus("Loading admin overview");
+  try {
+    const [workspaceResponse, logResponse] = await Promise.all([
+      apiFetch("/workspaces?limit=20&offset=0"),
+      apiFetch("/chat/logs?limit=5"),
+    ]);
+    const [workspaceBody, logBody] = await Promise.all([
+      workspaceResponse.json(),
+      logResponse.json(),
+    ]);
+
+    state.admin.workspaces = workspaceBody.workspaces || [];
+    state.admin.logs = logBody.logs || [];
+    renderAdminOverview({
+      workspaceTotal: workspaceBody.total ?? state.admin.workspaces.length,
+      logTotal: logBody.count ?? state.admin.logs.length,
+    });
+    setAdminStatus(`Updated ${formatTimestamp(new Date().toISOString())}`);
+  } catch (error) {
+    setAdminError(error.message);
   }
 }
 
@@ -270,6 +315,115 @@ function renderDocuments() {
     item.append(title, uri, meta);
     els.documentList.append(item);
   }
+}
+
+function renderAdminOverview({ workspaceTotal, logTotal }) {
+  els.adminWorkspaceCount.textContent = String(workspaceTotal);
+  els.adminLogCount.textContent = String(logTotal);
+  renderAdminWorkspaces();
+  renderAdminLogs();
+}
+
+function renderAdminWorkspaces() {
+  els.adminWorkspaceList.innerHTML = "";
+  if (!state.admin.workspaces.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No accessible workspaces";
+    els.adminWorkspaceList.append(empty);
+    return;
+  }
+
+  for (const workspace of state.admin.workspaces) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = `admin-item admin-workspace${
+      workspace.id === state.workspaceId ? " active" : ""
+    }`;
+    item.addEventListener("click", () => {
+      selectWorkspace(workspace.id);
+    });
+
+    const header = document.createElement("div");
+    header.className = "admin-item-header";
+
+    const title = document.createElement("span");
+    title.className = "admin-title";
+    title.textContent = workspace.name || workspace.id;
+
+    const id = document.createElement("span");
+    id.className = "admin-badge";
+    id.textContent = workspace.id;
+
+    const description = document.createElement("div");
+    description.className = "admin-text";
+    description.textContent = workspace.description || "No description";
+
+    const meta = document.createElement("div");
+    meta.className = "admin-meta";
+    meta.textContent = `Updated ${formatTimestamp(workspace.updated_at)}`;
+
+    header.append(title, id);
+    item.append(header, description, meta);
+    els.adminWorkspaceList.append(item);
+  }
+}
+
+function renderAdminLogs() {
+  els.adminLogList.innerHTML = "";
+  if (!state.admin.logs.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No chat logs for this workspace";
+    els.adminLogList.append(empty);
+    return;
+  }
+
+  for (const log of state.admin.logs) {
+    const item = document.createElement("article");
+    item.className = "admin-item";
+
+    const header = document.createElement("div");
+    header.className = "admin-item-header";
+
+    const question = document.createElement("span");
+    question.className = "admin-title";
+    question.textContent = truncateText(log.question, 72);
+
+    const verdict = document.createElement("span");
+    verdict.className = "admin-badge";
+    verdict.textContent = chatLogVerdict(log);
+
+    const answer = document.createElement("div");
+    answer.className = "admin-text";
+    answer.textContent = truncateText(log.answer, 130);
+
+    const meta = document.createElement("div");
+    meta.className = "admin-meta";
+    meta.textContent = [
+      `${log.latency_ms} ms`,
+      formatTimestamp(log.created_at),
+      `request ${log.request_id}`,
+    ].join(" / ");
+
+    header.append(question, verdict);
+    item.append(header, answer, meta);
+    els.adminLogList.append(item);
+  }
+}
+
+function selectWorkspace(workspaceId) {
+  const nextWorkspaceId = workspaceId || "public";
+  const changed = nextWorkspaceId !== state.workspaceId;
+  state.workspaceId = nextWorkspaceId;
+  els.workspaceId.value = state.workspaceId;
+  localStorage.setItem("rag.workspaceId", state.workspaceId);
+  if (changed) {
+    clearSelectedSession();
+  }
+  void loadSessions();
+  void loadDocuments();
+  void loadAdminOverview();
 }
 
 async function createSession(title) {
@@ -573,6 +727,40 @@ function renderSources(message, sources) {
   message.append(wrapper);
 }
 
+function chatLogVerdict(log) {
+  if (log.refusal) {
+    return "refused";
+  }
+  if (log.citation_valid === false) {
+    return "citation issue";
+  }
+  return "answered";
+}
+
+function truncateText(value, maxLength) {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function formatTimestamp(value) {
+  if (!value) {
+    return "unknown";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function buildHttpError(response, body, fallbackMessage) {
   const detail = body && typeof body === "object" ? body.detail : null;
   if (detail && typeof detail === "object") {
@@ -691,6 +879,14 @@ function clearEmptyMessages() {
   }
 }
 
+function clearSelectedSession() {
+  state.sessionId = "";
+  localStorage.removeItem("rag.sessionId");
+  els.sessionTitle.textContent = "No session selected";
+  renderSessions();
+  renderEmptyMessages();
+}
+
 function setStatus(message) {
   els.status.classList.remove("error");
   els.status.textContent = message;
@@ -709,6 +905,16 @@ function setDocumentStatus(message) {
 function setDocumentError(message) {
   els.documentStatus.classList.add("error");
   els.documentStatus.textContent = message || "Document request failed";
+}
+
+function setAdminStatus(message) {
+  els.adminStatus.classList.remove("error");
+  els.adminStatus.textContent = message;
+}
+
+function setAdminError(message) {
+  els.adminStatus.classList.add("error");
+  els.adminStatus.textContent = message || "Admin request failed";
 }
 
 init();

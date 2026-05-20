@@ -71,7 +71,7 @@
         </form>
       </section>
 
-      <aside class="knowledge-panel" aria-label="Knowledge base">
+      <aside class="knowledge-panel" aria-label="Knowledge base and admin">
         <header class="panel-header">
           <div>
             <p class="eyebrow">Knowledge</p>
@@ -143,6 +143,43 @@
 
         <div id="document-status" class="document-status">Ready</div>
         <div id="document-list" class="document-list" aria-live="polite"></div>
+
+        <section class="admin-panel" aria-label="Admin overview">
+          <header class="panel-header">
+            <div>
+              <p class="eyebrow">Admin</p>
+              <h2>Overview</h2>
+            </div>
+            <button id="reload-admin" type="button">Refresh</button>
+          </header>
+
+          <div id="admin-status" class="document-status">Ready</div>
+
+          <div class="admin-stats" aria-label="Admin summary">
+            <div class="admin-stat">
+              <span>Workspaces</span>
+              <strong id="admin-workspace-count">0</strong>
+            </div>
+            <div class="admin-stat">
+              <span>Recent logs</span>
+              <strong id="admin-log-count">0</strong>
+            </div>
+          </div>
+
+          <section class="admin-section" aria-label="Workspaces">
+            <h3>Workspaces</h3>
+            <div
+              id="admin-workspace-list"
+              class="admin-list"
+              aria-live="polite"
+            ></div>
+          </section>
+
+          <section class="admin-section" aria-label="Recent chat logs">
+            <h3>Recent chat logs</h3>
+            <div id="admin-log-list" class="admin-list" aria-live="polite"></div>
+          </section>
+        </section>
       </aside>
     </main>
 

@@ -90,7 +90,7 @@ docs/EVAL_TRENDS.md
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency/cost 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
-- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传和 reindex
+- Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex 和只读 admin overview
 
 ### 数据库与迁移
 
@@ -510,6 +510,7 @@ http://127.0.0.1:8000/app/
 - 粘贴或选择 Markdown 文件并调用 `POST /documents`
 - 刷新文档列表
 - 调用 `POST /documents/reindex` 执行 dry-run 或写入式 reindex
+- 查看可访问 workspace 列表和当前 workspace 最近 chat logs
 
 ### Health
 
@@ -1169,7 +1170,8 @@ Completed: 2026-05-20T09:51:56Z
 - 聊天 UI 已支持 session 创建、session 列表、history 加载和 SSE streaming。
 - 文档 UI 已支持 Markdown 上传、文档列表、reindex dry-run 和 write。
 - 聊天错误恢复体验已完成基础版：provider/HTTP 错误会在 assistant 消息内展示分类、request id、retryable 状态和 Retry 按钮。
-- 没有管理后台。
+- 管理后台基础版已完成：右侧 Admin overview 可刷新可访问 workspace 列表和当前 workspace 最近 chat logs，并可从 workspace 列表切换当前 workspace。
+- 完整管理后台仍未完成：还缺少用户/角色/组织管理、workspace 编辑/删除、审计检索、批量运维操作和权限分层 UI。
 
 ### 生产部署
 
