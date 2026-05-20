@@ -36,7 +36,7 @@ Production-ready RAG backend with FastAPI, pgvector, hybrid retrieval, eval gate
 Use this website link while no hosted demo exists:
 
 ```text
-https://github.com/ictup/Production_RAG_Assistant/releases/tag/v0.1.0
+https://github.com/ictup/production-rag-assistant/releases/tag/v0.1.0
 ```
 
 Recommended topics:

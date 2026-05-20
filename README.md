@@ -1,11 +1,11 @@
 # Production RAG Assistant
 
-![CI](https://github.com/ictup/Production_RAG_Assistant/actions/workflows/ci.yml/badge.svg)
-![Release](https://img.shields.io/github/v/release/ictup/Production_RAG_Assistant)
-![Python](https://img.shields.io/badge/python-3.11-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688)
-![Postgres](https://img.shields.io/badge/Postgres-pgvector-336791)
-![Tests](https://img.shields.io/badge/test%20suite-600%2B%20tests-brightgreen)
+[![CI](https://github.com/ictup/production-rag-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/ictup/production-rag-assistant/actions/workflows/ci.yml)
+[![Tag](https://img.shields.io/github/v/tag/ictup/production-rag-assistant?label=tag)](https://github.com/ictup/production-rag-assistant/releases/tag/v0.1.0)
+[![Python](https://img.shields.io/badge/python-3.11-blue)](pyproject.toml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688)](backend/app/main.py)
+[![Postgres](https://img.shields.io/badge/Postgres-pgvector-336791)](docker-compose.prod.yml)
+[![Tests](https://img.shields.io/badge/test%20suite-600%2B%20tests-brightgreen)](backend/tests)
 
 Production RAG Assistant is a production-style Retrieval-Augmented Generation
 backend built with FastAPI, Postgres/pgvector, hybrid retrieval, provider

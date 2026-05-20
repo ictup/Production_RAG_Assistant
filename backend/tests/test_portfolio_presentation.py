@@ -34,7 +34,7 @@ def test_portfolio_presentation_doc_has_actionable_about_fields() -> None:
         "Production RAG Assistant",
         "production-rag-assistant",
         "Production-ready RAG backend with FastAPI, pgvector",
-        "https://github.com/ictup/Production_RAG_Assistant/releases/tag/v0.1.0",
+        "https://github.com/ictup/production-rag-assistant/releases/tag/v0.1.0",
         "retrieval-augmented-generation",
         "production-ready",
         "ai-engineering",
