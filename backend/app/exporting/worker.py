@@ -1,7 +1,11 @@
+import argparse
 import asyncio
+import logging
 import re
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.models import ExportJob
@@ -17,12 +21,24 @@ EXPORT_MEDIA_TYPES = {
     "csv": "text/csv; charset=utf-8",
     "jsonl": "application/x-ndjson; charset=utf-8",
 }
+LOGGER = logging.getLogger(__name__)
+RunWorkerIteration = Callable[[Settings], Awaitable["ExportJobExecutionResult | None"]]
+SleepCallable = Callable[[float], Awaitable[Any]]
 
 
 @dataclass(frozen=True)
 class ExportJobExecutionResult:
     job: ExportJob
     result_path: Path | None = None
+
+
+@dataclass
+class ExportWorkerLoopStats:
+    iterations: int = 0
+    jobs_processed: int = 0
+    failed_jobs: int = 0
+    idle_iterations: int = 0
+    errors: int = 0
 
 
 async def execute_next_export_job(
@@ -131,13 +147,23 @@ def safe_filename_part(value: str) -> str:
 
 
 async def run_export_worker_once(settings: Settings | None = None) -> str:
+    result = await run_export_worker_iteration(settings=settings)
+    return format_export_worker_result(result)
+
+
+async def run_export_worker_iteration(
+    settings: Settings | None = None,
+) -> ExportJobExecutionResult | None:
     settings = settings or get_settings()
     async with get_sessionmaker()() as session:
-        result = await execute_next_export_job(
+        return await execute_next_export_job(
             export_job_repository=ExportJobRepository(session=session),
             chat_log_repository=ChatLogRepository(session=session),
             settings=settings,
         )
+
+
+def format_export_worker_result(result: ExportJobExecutionResult | None) -> str:
     if result is None:
         return "no pending export job"
     if result.result_path is None:
@@ -145,8 +171,98 @@ async def run_export_worker_once(settings: Settings | None = None) -> str:
     return f"export job {result.job.id} wrote {result.result_path}"
 
 
-def main() -> None:
-    print(asyncio.run(run_export_worker_once()))
+async def run_export_worker_loop(
+    settings: Settings | None = None,
+    *,
+    max_iterations: int | None = None,
+    run_once: RunWorkerIteration = run_export_worker_iteration,
+    sleep: SleepCallable = asyncio.sleep,
+) -> ExportWorkerLoopStats:
+    settings = settings or get_settings()
+    stats = ExportWorkerLoopStats()
+
+    while max_iterations is None or stats.iterations < max_iterations:
+        try:
+            result = await run_once(settings)
+        except Exception:
+            stats.iterations += 1
+            stats.errors += 1
+            LOGGER.exception("export worker iteration failed")
+            if max_iterations is None or stats.iterations < max_iterations:
+                await sleep(settings.export_worker_poll_interval_seconds)
+            continue
+
+        stats.iterations += 1
+        if result is None:
+            stats.idle_iterations += 1
+            LOGGER.debug("no pending export job")
+            if max_iterations is None or stats.iterations < max_iterations:
+                await sleep(settings.export_worker_poll_interval_seconds)
+            continue
+
+        stats.jobs_processed += 1
+        if result.result_path is None:
+            stats.failed_jobs += 1
+            LOGGER.warning("export job %s failed", result.job.id)
+        else:
+            LOGGER.info("export job %s wrote %s", result.job.id, result.result_path)
+
+    return stats
+
+
+async def run_export_worker_forever(settings: Settings | None = None) -> None:
+    await run_export_worker_loop(settings=settings)
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run export job worker")
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Run continuously, polling for pending export jobs.",
+    )
+    parser.add_argument(
+        "--poll-interval-seconds",
+        type=positive_float,
+        default=None,
+        help="Override EXPORT_WORKER_POLL_INTERVAL_SECONDS for loop mode.",
+    )
+    return parser.parse_args(argv)
+
+
+def positive_float(value: str) -> float:
+    parsed = float(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return parsed
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = parse_args(argv)
+    settings = get_settings()
+    if args.poll_interval_seconds is not None:
+        settings = settings.model_copy(
+            update={
+                "export_worker_poll_interval_seconds": args.poll_interval_seconds,
+            }
+        )
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    if args.loop:
+        LOGGER.info(
+            "starting export worker loop with %.3fs poll interval",
+            settings.export_worker_poll_interval_seconds,
+        )
+        try:
+            asyncio.run(run_export_worker_forever(settings=settings))
+        except KeyboardInterrupt:
+            LOGGER.info("export worker stopped")
+        return
+
+    print(asyncio.run(run_export_worker_once(settings=settings)))
 
 
 if __name__ == "__main__":

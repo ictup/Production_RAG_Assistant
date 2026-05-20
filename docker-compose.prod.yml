@@ -4,6 +4,7 @@ x-api-environment: &api-environment
   ENV: production
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD:-rag}@postgres:5432/${POSTGRES_DB:-rag}
   SYNC_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD:-rag}@postgres:5432/${POSTGRES_DB:-rag}
+  EXPORT_STORAGE_DIR: ${EXPORT_STORAGE_DIR:-/app/exports}
 
 x-api-image: &api-image
   build:
@@ -55,6 +56,8 @@ services:
     <<: *api-image
     ports:
       - "${API_PORT:-8000}:8000"
+    volumes:
+      - export_prod_data:/app/exports
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,5 +78,19 @@ services:
       retries: 3
       start_period: 15s
 
+  export-worker:
+    <<: *api-image
+    command: ["python", "-m", "backend.app.exporting.worker", "--loop"]
+    volumes:
+      - export_prod_data:/app/exports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 30s
+
 volumes:
   postgres_prod_data:
+  export_prod_data:

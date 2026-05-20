@@ -105,7 +105,7 @@ docs/EVAL_TRENDS.md
 - 基础 rate limit 中间件：默认关闭，可按 API key 哈希或客户端 IP 限流
 - HTTP 请求指标、RAG refusal 指标、无效 citation 指标、provider token/latency/cost 指标
 - OpenAI provider 错误会映射为结构化 API 错误、日志和 metrics
-- 异步导出 job 基础模型、API、worker 与下载接口：`export_jobs` 表和 `ExportJobRepository` 已支持 pending/running/succeeded/failed 状态流转，`/exports/jobs` 已支持创建、列表、详情和下载查询，`python -m backend.app.exporting.worker` 可执行一个 pending chat log 导出任务并落地 JSONL/CSV 文件
+- 异步导出 job 基础模型、API、worker 与下载接口：`export_jobs` 表和 `ExportJobRepository` 已支持 pending/running/succeeded/failed 状态流转，`/exports/jobs` 已支持创建、列表、详情和下载查询，`python -m backend.app.exporting.worker` 可执行一个 pending chat log 导出任务，`python -m backend.app.exporting.worker --loop` 可作为常驻 worker 轮询并落地 JSONL/CSV 文件
 - Web UI：`GET /app/`，支持 session、history、SSE streaming chat、文档上传、reindex、workspace 创建、编辑、归档、恢复、workspace 搜索、分页、状态过滤、当前页批量归档/恢复和跨页匹配批量预览/确认、归档 workspace 写入控件禁用、只读 admin overview、chat log audit filters、chat log async export job creation/poll/download、chat log audit details、workspace operation audit filters 和 workspace operation audit details
 
 ### 数据库与迁移
@@ -476,7 +476,7 @@ docker run --rm --env-file .env -p 8000:8000 production-rag-assistant:local
 
 ### 7. 启动 production-style 本地栈
 
-production compose 会把 API、migration job 和 Postgres 放在同一个 Docker network 中。API 容器内部使用 `postgres:5432` 访问数据库，不再依赖宿主机 `localhost`。
+production compose 会把 API、export worker、migration job 和 Postgres 放在同一个 Docker network 中。API 和 worker 容器内部使用 `postgres:5432` 访问数据库，不再依赖宿主机 `localhost`。API 与 `export-worker` 共享 `export_prod_data:/app/exports`，用于下载 worker 写出的异步导出文件。
 
 首次运行前创建 `.env`：
 
@@ -506,6 +506,12 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 ```powershell
 docker compose -f docker-compose.prod.yml logs -f api
+```
+
+查看 export worker 日志：
+
+```powershell
+docker compose -f docker-compose.prod.yml logs -f export-worker
 ```
 
 停止完整栈：
@@ -1087,6 +1093,7 @@ make prod-build         构建 production API 镜像
 make prod-up            启动 production-style 本地栈
 make prod-down          停止 production-style 本地栈
 make prod-logs          查看 production API 日志
+make prod-worker-logs   查看 production export worker 日志
 make migrate            执行 Alembic 迁移
 make ingest             导入 data/raw
 make ingest-dry-run     只解析和 embedding，不写库
@@ -1292,13 +1299,15 @@ Completed: 2026-05-20T09:51:56Z
 - export job API 已完成：`POST /exports/jobs` 可按当前 `X-Workspace-ID` 创建 chat log 导出任务，`GET /exports/jobs` 支持 status/export_type 分页查询，`GET /exports/jobs/{job_id}` 可按 workspace 读取任务详情；现有 `/chat/logs/export` 仍保持同步。
 - export worker 基础版已完成：`backend.app.exporting.worker` 会 claim 一个 pending job，按 filters 查询 chat logs，复用同步导出的 JSONL/CSV 序列化，写入 `EXPORT_STORAGE_DIR`，并将 job 标记为 succeeded/failed。
 - export 下载接口和前端轮询已完成：`GET /exports/jobs/{job_id}/download` 只允许下载当前 workspace 下 succeeded job 的 `EXPORT_STORAGE_DIR` 内部文件，Admin export JSONL/CSV 按钮会创建 job、轮询详情并在 succeeded 后触发下载。
-- 完整管理后台仍未完成：还缺少用户/角色/组织管理、导出 worker 常驻化/生产编排、更完整的批量运维操作和权限分层 UI。
+- export worker 常驻服务和 production compose 编排已完成：`--loop` 模式按 `EXPORT_WORKER_POLL_INTERVAL_SECONDS` 轮询，`docker-compose.prod.yml` 增加 `export-worker` 服务，并让 API/worker 共享 `export_prod_data`。
+- 完整管理后台仍未完成：还缺少用户/角色/组织管理、更完整的批量运维操作和权限分层 UI。
 
 ### 生产部署
 
 - backend Dockerfile 已完成：`Dockerfile`。
 - `.dockerignore` 已完成，排除 `.env`、`.venv`、缓存和本地报告。
 - production docker-compose 已完成：`docker-compose.prod.yml`。
+- production export worker 服务已完成：`export-worker` 使用同一镜像运行 `python -m backend.app.exporting.worker --loop`，并与 API 共享导出文件 volume。
 - 环境变量和 secrets 文档已完成：`docs/CONFIGURATION.md`。
 - 部署 runbook 已完成：`docs/DEPLOYMENT_RUNBOOK.md`。
 - CORS 策略已完成：默认关闭，通过 `CORS_ALLOWED_ORIGINS` 或 `CORS_ALLOWED_ORIGIN_REGEX` 显式开启。
@@ -1418,19 +1427,20 @@ OPENAI_API_KEY
 31. 导出任务异步化：创建/查询 job API。已完成。
 32. 导出任务异步化：worker 执行和文件落地。已完成。
 33. 导出任务异步化：下载接口和前端轮询。已完成。
+34. 导出 worker 常驻服务和 production compose 编排。已完成。
 
 ## 14. 当前优先级建议
 
 建议下一步优先做：
 
 ```text
-导出 worker 常驻服务和生产 compose 编排
+导出任务运维补强：清理、重试和超时策略
 ```
 
 原因：
 
-- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口和前端轮询已完成。
-- 下一步可以把当前 one-shot worker 升级为可持续运行的 worker 服务，并在 production compose 中为它配置共享 `EXPORT_STORAGE_DIR` volume、健康/重启策略和运行说明。
+- export job 表、迁移、repository、状态流转、创建/查询 API、worker 执行、文件落地、下载接口、前端轮询、常驻 worker 和 production compose 编排已完成。
+- 下一步可以补充导出任务的过期文件清理、失败任务重试、长时间 running 任务超时恢复，以及相应的运维文档/测试。
 
 以下命令是后续需要真实 provider 时的验证入口：
 

@@ -9,9 +9,11 @@ import pytest
 from backend.app.core.config import Settings
 from backend.app.db.models import ChatLog, ExportJob
 from backend.app.exporting.worker import (
+    ExportJobExecutionResult,
     build_export_job_filename,
     execute_next_export_job,
     media_type_for_format,
+    run_export_worker_loop,
     safe_filename_part,
 )
 
@@ -289,3 +291,92 @@ def test_export_filename_parts_are_sanitized() -> None:
 def test_media_type_for_format_rejects_unknown_format() -> None:
     with pytest.raises(ValueError, match="unsupported export format"):
         media_type_for_format("xml")
+
+
+@pytest.mark.asyncio
+async def test_run_export_worker_loop_sleeps_between_idle_iterations() -> None:
+    export_job = make_export_job_model()
+    results: list[ExportJobExecutionResult | None] = [
+        None,
+        ExportJobExecutionResult(job=export_job, result_path=Path("exports/job.jsonl")),
+        None,
+    ]
+    sleep_calls: list[float] = []
+
+    async def run_once(settings: Settings) -> ExportJobExecutionResult | None:
+        del settings
+        return results.pop(0)
+
+    async def sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    stats = await run_export_worker_loop(
+        Settings(export_worker_poll_interval_seconds=0.25),
+        max_iterations=3,
+        run_once=run_once,
+        sleep=sleep,
+    )
+
+    assert stats.iterations == 3
+    assert stats.jobs_processed == 1
+    assert stats.failed_jobs == 0
+    assert stats.idle_iterations == 2
+    assert stats.errors == 0
+    assert sleep_calls == [0.25]
+
+
+@pytest.mark.asyncio
+async def test_run_export_worker_loop_counts_failed_jobs() -> None:
+    export_job = make_export_job_model()
+    export_job.status = "failed"
+
+    async def run_once(settings: Settings) -> ExportJobExecutionResult | None:
+        del settings
+        return ExportJobExecutionResult(job=export_job)
+
+    async def sleep(delay: float) -> None:
+        raise AssertionError(f"unexpected sleep: {delay}")
+
+    stats = await run_export_worker_loop(
+        Settings(),
+        max_iterations=1,
+        run_once=run_once,
+        sleep=sleep,
+    )
+
+    assert stats.iterations == 1
+    assert stats.jobs_processed == 1
+    assert stats.failed_jobs == 1
+    assert stats.idle_iterations == 0
+    assert stats.errors == 0
+
+
+@pytest.mark.asyncio
+async def test_run_export_worker_loop_counts_iteration_errors() -> None:
+    calls = 0
+    sleep_calls: list[float] = []
+
+    async def run_once(settings: Settings) -> ExportJobExecutionResult | None:
+        nonlocal calls
+        del settings
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("database temporarily unavailable")
+        return None
+
+    async def sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    stats = await run_export_worker_loop(
+        Settings(export_worker_poll_interval_seconds=0.5),
+        max_iterations=2,
+        run_once=run_once,
+        sleep=sleep,
+    )
+
+    assert stats.iterations == 2
+    assert stats.jobs_processed == 0
+    assert stats.failed_jobs == 0
+    assert stats.idle_iterations == 1
+    assert stats.errors == 1
+    assert sleep_calls == [0.5]

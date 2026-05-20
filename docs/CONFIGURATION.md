@@ -124,6 +124,7 @@ contextualized before retrieval.
 | `DATABASE_URL` | local asyncpg URL | Yes | Async SQLAlchemy database URL for the API. |
 | `SYNC_DATABASE_URL` | local psycopg URL | Yes | Sync database URL for Alembic migrations. |
 | `EXPORT_STORAGE_DIR` | `exports` | No | Directory where export worker output files are written. Relative paths resolve from the process working directory. Use a mounted persistent volume in production-style deployments. |
+| `EXPORT_WORKER_POLL_INTERVAL_SECONDS` | `5` | No | Poll interval for `python -m backend.app.exporting.worker --loop` when no pending export job is available or an iteration-level error occurs. |
 
 ### Embeddings
 

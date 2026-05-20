@@ -83,6 +83,7 @@ Expected state:
 - `postgres` is healthy.
 - `migrate` exits successfully with code `0`.
 - `api` is running and becomes healthy.
+- `export-worker` is running and polling for pending export jobs.
 
 ## Verification
 
@@ -124,6 +125,12 @@ Follow API logs:
 
 ```powershell
 docker compose -f docker-compose.prod.yml logs -f api
+```
+
+Follow export worker logs:
+
+```powershell
+docker compose -f docker-compose.prod.yml logs -f export-worker
 ```
 
 View migration logs:

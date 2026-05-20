@@ -274,10 +274,12 @@ curl.exe "http://127.0.0.1:8000/workspaces/audit-logs?action=archive&workspace_i
 The `/app/` Admin overview also exposes these records with action, workspace
 ID, request ID, and time-range filters.
 
-Asynchronous export groundwork is represented by the `export_jobs` table,
+Asynchronous export is represented by the `export_jobs` table,
 `ExportJobRepository`, `/exports/jobs` API, and export worker. Jobs start as
 `pending`, can be claimed by a worker as `running`, and then finish as
 `succeeded` or `failed`. Worker output is written under `EXPORT_STORAGE_DIR`.
+In production compose, the API and `export-worker` services share the
+`export_prod_data` volume so the API can download files written by the worker.
 Admin export buttons create a job, poll its status, and download the completed
 file through `/exports/jobs/{job_id}/download`. The existing `/chat/logs/export`
 route remains synchronous for compatibility.
@@ -300,6 +302,19 @@ Run one worker pass:
 
 ```powershell
 uv run python -m backend.app.exporting.worker
+```
+
+Run a continuously polling worker locally:
+
+```powershell
+uv run python -m backend.app.exporting.worker --loop
+```
+
+The loop sleeps for `EXPORT_WORKER_POLL_INTERVAL_SECONDS` when there is no
+pending job. Production compose starts this loop as the `export-worker` service:
+
+```powershell
+docker compose -f docker-compose.prod.yml logs -f export-worker
 ```
 
 Download a completed job:
