@@ -74,6 +74,8 @@ class FakePipeline:
                 embedding_provider="fake",
                 embedding_latency_ms=7,
                 generation_latency_ms=5,
+                embedding_input_tokens=4,
+                embedding_total_tokens=4,
                 input_tokens=10,
                 output_tokens=5,
             ),
@@ -745,6 +747,10 @@ def test_chat_route_records_provider_usage_metrics() -> None:
         'rag_provider_tokens_total{provider="fake",model="test-fake-llm",'
         'token_type="output"} 5'
     ) in output
+    assert (
+        'rag_provider_tokens_total{provider="fake",model="test-fake-embedding",'
+        'token_type="input"} 4'
+    ) in output
 
 
 def test_chat_route_records_provider_cost_metric() -> None:
@@ -758,11 +764,15 @@ def test_chat_route_records_provider_cost_metric() -> None:
             embedding_provider="fake",
             embedding_latency_ms=7,
             generation_latency_ms=5,
+            embedding_input_tokens=20,
+            embedding_total_tokens=20,
+            embedding_cost_usd=0.000002,
+            embedding_cost_estimated=True,
             input_tokens=10,
             output_tokens=5,
             input_cost_usd=0.000005,
             output_cost_usd=0.000005,
-            total_cost_usd=0.00001,
+            total_cost_usd=0.000012,
             cost_estimated=True,
         )
     )
@@ -777,6 +787,11 @@ def test_chat_route_records_provider_cost_metric() -> None:
     assert response.status_code == 200
     assert (
         'rag_provider_cost_usd_total{provider="fake",model="test-fake-llm"} 1e-05'
+        in metrics_registry.render_prometheus()
+    )
+    assert (
+        'rag_provider_cost_usd_total{provider="fake",'
+        'model="test-fake-embedding"} 2e-06'
         in metrics_registry.render_prometheus()
     )
 

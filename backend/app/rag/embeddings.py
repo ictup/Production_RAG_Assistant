@@ -1,6 +1,7 @@
 import hashlib
 import math
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 import httpx
@@ -19,11 +20,18 @@ class OpenAIEmbeddingError(OpenAIProviderError):
     pass
 
 
+@dataclass(frozen=True)
+class EmbeddingUsage:
+    input_tokens: int = 0
+    total_tokens: int = 0
+
+
 @runtime_checkable
 class EmbeddingClient(Protocol):
     provider_name: str
     model_name: str
     dimension: int
+    last_usage: EmbeddingUsage
 
     async def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         pass
@@ -79,10 +87,12 @@ class FakeEmbeddingClient:
 
         self.dimension = dimension
         self.model_name = model_name
+        self.last_usage = EmbeddingUsage()
 
     async def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         embeddings = [self._embed_one(text) for text in texts]
         validate_embedding_batch(embeddings, expected_dimension=self.dimension)
+        self.last_usage = EmbeddingUsage()
         return embeddings
 
     async def embed_query(self, query: str) -> list[float]:
@@ -145,6 +155,7 @@ class OpenAIEmbeddingClient:
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
         self.http_client = http_client
+        self.last_usage = EmbeddingUsage()
 
     async def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         normalized_texts = normalize_embedding_inputs(texts)
@@ -160,6 +171,7 @@ class OpenAIEmbeddingClient:
             expected_count=len(normalized_texts),
         )
         validate_embedding_batch(embeddings, expected_dimension=self.dimension)
+        self.last_usage = parse_openai_embeddings_usage(response_data)
         return embeddings
 
     async def embed_query(self, query: str) -> list[float]:
@@ -241,6 +253,30 @@ def parse_openai_embeddings_response(
         )
 
     return [embeddings_by_index[index] for index in range(expected_count)]
+
+
+def parse_openai_embeddings_usage(response_data: dict) -> EmbeddingUsage:
+    raw_usage = response_data.get("usage")
+    if raw_usage is None:
+        return EmbeddingUsage()
+    if not isinstance(raw_usage, dict):
+        raise OpenAIEmbeddingError("OpenAI embeddings usage must be an object")
+
+    input_tokens = raw_usage.get("prompt_tokens", raw_usage.get("input_tokens", 0))
+    total_tokens = raw_usage.get("total_tokens", input_tokens)
+    if (
+        not isinstance(input_tokens, int)
+        or not isinstance(total_tokens, int)
+        or input_tokens < 0
+        or total_tokens < 0
+    ):
+        raise OpenAIEmbeddingError(
+            "OpenAI embeddings usage token counts must be non-negative integers"
+        )
+    return EmbeddingUsage(
+        input_tokens=input_tokens,
+        total_tokens=total_tokens,
+    )
 
 
 def build_embedding_client(settings: Settings | None = None) -> EmbeddingClient:

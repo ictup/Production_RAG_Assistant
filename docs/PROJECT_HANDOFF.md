@@ -315,10 +315,10 @@ EMBEDDING_DIMENSION=1536
 如果要启用 provider 成本估算，设置每 100 万 token 的输入/输出价格：
 
 ```text
-PROVIDER_PRICE_TABLE=openai:gpt-example:input=0.00,output=0.00
+PROVIDER_PRICE_TABLE=openai:gpt-example:input=0.00,output=0.00;openai:text-embedding-example:input=0.00,output=0
 ```
 
-当前基础版只估算 generation token 成本，并输出到响应 `usage`、chat log `usage` 和 Prometheus `rag_provider_cost_usd_total`。真实价格会变化，应放在部署配置或 secret manager 中维护，不写死在代码里。
+当前基础版会估算 generation token 成本和 OpenAI embedding input token 成本，并输出到响应 `usage`、chat log `usage` 和 Prometheus `rag_provider_cost_usd_total`。embedding 模型没有 output token 计费时，把 `output=0`。真实价格会变化，应放在部署配置或 secret manager 中维护，不写死在代码里。
 
 `text-embedding-3-small` 默认 1536 维，和当前 pgvector schema 匹配。
 
@@ -800,7 +800,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-431 passed
+435 passed
 ```
 
 ### Pipeline Smoke
@@ -1100,8 +1100,7 @@ Repository -> Settings -> Actions -> General
 - 多轮 query contextualization 已完成：带 `session_id` 的 `/chat` 和 `/chat/stream` 会读取最近 session logs，并传给 query rewrite prompt。
 - OpenAI Responses API listwise reranker 已完成，默认仍为 no-op，可用 `RERANKER_PROVIDER=openai` 启用。
 - metadata filter 基础版已接入 `/chat` 和 `/chat/stream`，会应用到 vector/sparse retrieval 的 `document_chunks.metadata @>` 条件。
-- provider generation token 成本估算基础版已完成：`PROVIDER_PRICE_TABLE`、响应 usage cost 字段、Prometheus `rag_provider_cost_usd_total`。
-- embedding token 成本估算尚未实现，因为当前 embedding provider 还没有返回 embedding token usage。
+- provider generation token 和 OpenAI embedding token 成本估算基础版已完成：`PROVIDER_PRICE_TABLE`、响应 usage cost 字段、Prometheus `rag_provider_cost_usd_total`。
 
 ### 检索质量
 
@@ -1241,7 +1240,7 @@ OPENAI_API_KEY
 建议下一步优先做：
 
 ```text
-embedding token usage and cost estimates
+chat error recovery UX
 ```
 
 原因：
@@ -1253,8 +1252,7 @@ embedding token usage and cost estimates
 - OpenAI generator 已可纳入 eval runner。
 - OpenAI provider 已有超时、有限重试和错误分类。
 - OpenAI provider 错误已可映射到 API 响应、日志和 metrics。
-- provider token 统计和 embedding/generation latency 细分已完成，可以支持基础成本估算和性能观察。
-- 多轮 query contextualization 已完成，下一步可以补 embedding token usage/cost，让 provider 成本估算覆盖 generation 和 embedding 两类调用。
+- provider token/cost 统计和 embedding/generation latency 细分已完成，下一步可以改善前端错误恢复，让真实 provider 失败、限流或超时时更容易被用户理解和重试。
 
 启用 OpenAI embedding 后可以先跑：
 

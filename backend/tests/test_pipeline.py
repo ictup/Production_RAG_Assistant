@@ -8,7 +8,7 @@ from sqlalchemy.dialects import postgresql
 
 from backend.app.core.config import Settings
 from backend.app.core.tracing import TRACE_LOGGER_NAME, trace_context
-from backend.app.rag.embeddings import FakeEmbeddingClient
+from backend.app.rag.embeddings import EmbeddingUsage, FakeEmbeddingClient
 from backend.app.rag.generation import FakeGenerator
 from backend.app.rag.pipeline import ChatPipelineRequest, RagPipeline
 from backend.app.rag.query_rewriting import ConversationTurn, QueryRewriteResult
@@ -47,6 +47,13 @@ class RecordingEmbeddingClient(FakeEmbeddingClient):
     async def embed_query(self, query: str) -> list[float]:
         self.queries.append(query)
         return await super().embed_query(query)
+
+
+class TokenCountingEmbeddingClient(FakeEmbeddingClient):
+    async def embed_query(self, query: str) -> list[float]:
+        embedding = await super().embed_query(query)
+        self.last_usage = EmbeddingUsage(input_tokens=20, total_tokens=20)
+        return embedding
 
 
 class StaticQueryRewriter:
@@ -92,7 +99,10 @@ def make_cost_settings() -> Settings:
     return Settings(
         **{
             **make_settings().model_dump(),
-            "provider_price_table": "fake:test-fake-llm:input=0.50,output=1.00",
+            "provider_price_table": (
+                "fake:test-fake-llm:input=0.50,output=1.00;"
+                "fake:test-fake-embedding:input=0.10,output=0"
+            ),
         }
     )
 
@@ -281,6 +291,43 @@ async def test_pipeline_estimates_generation_cost_from_configured_prices() -> No
         response.usage.input_cost_usd + response.usage.output_cost_usd
     )
     assert response.usage.cost_currency == "USD"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_estimates_embedding_cost_from_provider_usage() -> None:
+    chunk_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    session = FakeAsyncSession(
+        [
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+            [make_row(chunk_id=chunk_id, document_id=document_id)],
+        ]
+    )
+    pipeline = RagPipeline(
+        session=session,  # type: ignore[arg-type]
+        settings=make_cost_settings(),
+        embedding_client=TokenCountingEmbeddingClient(
+            dimension=1536,
+            model_name="test-fake-embedding",
+        ),
+        reranker=NoOpReranker(),
+        generator=FakeGenerator(model_name="test-fake-llm"),
+    )
+
+    response = await pipeline.answer_question(
+        ChatPipelineRequest(question="What problem does FlashAttention solve?")
+    )
+
+    assert response.usage.embedding_input_tokens == 20
+    assert response.usage.embedding_total_tokens == 20
+    assert response.usage.embedding_cost_usd == pytest.approx(0.000002)
+    assert response.usage.embedding_cost_estimated is True
+    assert response.usage.total_cost_usd == (
+        response.usage.input_cost_usd
+        + response.usage.output_cost_usd
+        + response.usage.embedding_cost_usd
+    )
+    assert response.usage.cost_estimated is True
 
 
 @pytest.mark.asyncio

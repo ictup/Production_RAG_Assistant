@@ -144,7 +144,7 @@ contextualized before retrieval.
 
 | Variable | Default | Required | Description |
 | --- | --- | --- | --- |
-| `PROVIDER_PRICE_TABLE` | empty | No | Optional semicolon-separated provider/model price table for generation token cost estimates. Format: `provider:model:input=<usd_per_1m_tokens>,output=<usd_per_1m_tokens>`. Example placeholder: `openai:gpt-example:input=0.00,output=0.00`. Keep real prices in deployment config because provider pricing changes over time. |
+| `PROVIDER_PRICE_TABLE` | empty | No | Optional semicolon-separated provider/model price table for generation and embedding token cost estimates. Format: `provider:model:input=<usd_per_1m_tokens>,output=<usd_per_1m_tokens>`. For embedding models, set `output=0`. Example placeholder: `openai:gpt-example:input=0.00,output=0.00;openai:text-embedding-example:input=0.00,output=0`. Keep real prices in deployment config because provider pricing changes over time. |
 
 ### Browser Boundary
 

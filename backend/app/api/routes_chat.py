@@ -194,6 +194,17 @@ def observe_chat_provider_usage(response: ChatPipelineResponse) -> None:
             model=usage.embedding_model,
             latency_seconds=usage.embedding_latency_ms / 1000,
         )
+        metrics_registry.observe_provider_tokens(
+            provider=usage.embedding_provider,
+            model=usage.embedding_model,
+            token_type="input",
+            tokens=usage.embedding_input_tokens,
+        )
+        metrics_registry.observe_provider_cost(
+            provider=usage.embedding_provider,
+            model=usage.embedding_model,
+            cost_usd=usage.embedding_cost_usd,
+        )
 
     if response.refusal is None:
         metrics_registry.observe_provider_latency(
@@ -217,7 +228,7 @@ def observe_chat_provider_usage(response: ChatPipelineResponse) -> None:
         metrics_registry.observe_provider_cost(
             provider=usage.generator_provider,
             model=usage.model,
-            cost_usd=usage.total_cost_usd,
+            cost_usd=usage.input_cost_usd + usage.output_cost_usd,
         )
 
 

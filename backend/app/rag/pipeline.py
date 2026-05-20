@@ -9,7 +9,11 @@ from backend.app.core.config import Settings, get_settings
 from backend.app.core.tracing import trace_span
 from backend.app.rag.citations import Source, build_sources, validate_citations
 from backend.app.rag.costs import estimate_provider_token_cost
-from backend.app.rag.embeddings import EmbeddingClient, build_embedding_client
+from backend.app.rag.embeddings import (
+    EmbeddingClient,
+    EmbeddingUsage,
+    build_embedding_client,
+)
 from backend.app.rag.fusion import reciprocal_rank_fusion
 from backend.app.rag.generation import Generator, build_generator
 from backend.app.rag.metadata_filters import normalize_metadata_filter
@@ -87,8 +91,12 @@ class UsageInfo(BaseModel):
     embedding_provider: str = "unknown"
     embedding_latency_ms: int = 0
     generation_latency_ms: int = 0
+    embedding_input_tokens: int = 0
+    embedding_total_tokens: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    embedding_cost_usd: float = Field(default=0.0, ge=0)
+    embedding_cost_estimated: bool = False
     input_cost_usd: float = Field(default=0.0, ge=0)
     output_cost_usd: float = Field(default=0.0, ge=0)
     total_cost_usd: float = Field(default=0.0, ge=0)
@@ -195,6 +203,7 @@ class RagPipeline:
                 0,
                 int((time.perf_counter() - embedding_started_at) * 1000),
             )
+            embedding_usage = get_embedding_usage(self.embedding_client)
         with trace_span(
             "rag.vector_retrieval",
             {
@@ -264,6 +273,8 @@ class RagPipeline:
                 embedding_provider=self.embedding_client.provider_name,
                 started_at=started_at,
                 embedding_latency_ms=embedding_latency_ms,
+                embedding_input_tokens=embedding_usage.input_tokens,
+                embedding_total_tokens=embedding_usage.total_tokens,
                 provider_price_table=self.settings.provider_price_table,
             )
 
@@ -329,6 +340,8 @@ class RagPipeline:
                 input_tokens=generated.input_tokens,
                 output_tokens=generated.output_tokens,
                 embedding_latency_ms=embedding_latency_ms,
+                embedding_input_tokens=embedding_usage.input_tokens,
+                embedding_total_tokens=embedding_usage.total_tokens,
                 generation_latency_ms=generation_latency_ms,
                 provider_price_table=self.settings.provider_price_table,
             ),
@@ -402,6 +415,7 @@ class RagPipeline:
                 0,
                 int((time.perf_counter() - embedding_started_at) * 1000),
             )
+            embedding_usage = get_embedding_usage(self.embedding_client)
         with trace_span(
             "rag.vector_retrieval",
             {
@@ -471,6 +485,8 @@ class RagPipeline:
                 embedding_provider=self.embedding_client.provider_name,
                 started_at=started_at,
                 embedding_latency_ms=embedding_latency_ms,
+                embedding_input_tokens=embedding_usage.input_tokens,
+                embedding_total_tokens=embedding_usage.total_tokens,
                 provider_price_table=self.settings.provider_price_table,
             )
             yield ChatPipelineStreamEvent(event_type="delta", delta=response.answer)
@@ -560,6 +576,8 @@ class RagPipeline:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 embedding_latency_ms=embedding_latency_ms,
+                embedding_input_tokens=embedding_usage.input_tokens,
+                embedding_total_tokens=embedding_usage.total_tokens,
                 generation_latency_ms=generation_latency_ms,
                 provider_price_table=self.settings.provider_price_table,
             ),
@@ -622,6 +640,8 @@ def build_refusal_response(
     embedding_provider: str = "unknown",
     started_at: float,
     embedding_latency_ms: int = 0,
+    embedding_input_tokens: int = 0,
+    embedding_total_tokens: int = 0,
     provider_price_table: str = "",
 ) -> ChatPipelineResponse:
     return ChatPipelineResponse(
@@ -644,6 +664,8 @@ def build_refusal_response(
             embedding_provider=embedding_provider,
             started_at=started_at,
             embedding_latency_ms=embedding_latency_ms,
+            embedding_input_tokens=embedding_input_tokens,
+            embedding_total_tokens=embedding_total_tokens,
             provider_price_table=provider_price_table,
         ),
         citation_valid=None,
@@ -660,6 +682,8 @@ def build_usage_info(
     embedding_provider: str = "unknown",
     input_tokens: int = 0,
     output_tokens: int = 0,
+    embedding_input_tokens: int = 0,
+    embedding_total_tokens: int = 0,
     embedding_latency_ms: int = 0,
     generation_latency_ms: int = 0,
     provider_price_table: str = "",
@@ -671,6 +695,13 @@ def build_usage_info(
         output_tokens=output_tokens,
         raw_price_table=provider_price_table,
     )
+    embedding_cost_estimate = estimate_provider_token_cost(
+        provider=embedding_provider,
+        model=embedding_model,
+        input_tokens=embedding_input_tokens,
+        output_tokens=0,
+        raw_price_table=provider_price_table,
+    )
     return UsageInfo(
         model=model,
         embedding_model=embedding_model,
@@ -679,10 +710,20 @@ def build_usage_info(
         latency_ms=max(0, int((time.perf_counter() - started_at) * 1000)),
         embedding_latency_ms=embedding_latency_ms,
         generation_latency_ms=generation_latency_ms,
+        embedding_input_tokens=embedding_input_tokens,
+        embedding_total_tokens=embedding_total_tokens,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        embedding_cost_usd=embedding_cost_estimate.total_cost_usd,
+        embedding_cost_estimated=embedding_cost_estimate.estimated,
         input_cost_usd=cost_estimate.input_cost_usd,
         output_cost_usd=cost_estimate.output_cost_usd,
-        total_cost_usd=cost_estimate.total_cost_usd,
-        cost_estimated=cost_estimate.estimated,
+        total_cost_usd=(
+            cost_estimate.total_cost_usd + embedding_cost_estimate.total_cost_usd
+        ),
+        cost_estimated=cost_estimate.estimated or embedding_cost_estimate.estimated,
     )
+
+
+def get_embedding_usage(embedding_client: EmbeddingClient) -> EmbeddingUsage:
+    return getattr(embedding_client, "last_usage", EmbeddingUsage())

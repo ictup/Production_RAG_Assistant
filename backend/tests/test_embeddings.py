@@ -8,12 +8,14 @@ from backend.app.rag.embedding_smoke import run_embedding_smoke
 from backend.app.rag.embeddings import (
     EmbeddingClient,
     EmbeddingDimensionError,
+    EmbeddingUsage,
     FakeEmbeddingClient,
     OpenAIEmbeddingClient,
     OpenAIEmbeddingError,
     build_embedding_client,
     normalize_embedding_inputs,
     parse_openai_embeddings_response,
+    parse_openai_embeddings_usage,
     validate_embedding_batch,
     validate_embedding_dimension,
 )
@@ -29,6 +31,7 @@ async def test_fake_embedding_client_returns_deterministic_vectors() -> None:
     assert first == second
     assert len(first) == 8
     assert math.isclose(sum(value * value for value in first), 1.0)
+    assert client.last_usage == EmbeddingUsage()
 
 
 @pytest.mark.asyncio
@@ -80,7 +83,8 @@ async def test_openai_embedding_client_sends_expected_request() -> None:
                 "data": [
                     {"index": 1, "embedding": [0.4, 0.5, 0.6]},
                     {"index": 0, "embedding": [0.1, 0.2, 0.3]},
-                ]
+                ],
+                "usage": {"prompt_tokens": 9, "total_tokens": 9},
             },
         )
 
@@ -98,6 +102,10 @@ async def test_openai_embedding_client_sends_expected_request() -> None:
         )
 
     assert embeddings == [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+    assert embedding_client.last_usage == EmbeddingUsage(
+        input_tokens=9,
+        total_tokens=9,
+    )
     assert len(requests) == 1
 
 
@@ -136,7 +144,10 @@ async def test_openai_embedding_client_retries_transient_errors() -> None:
             return httpx.Response(500, text="temporary server error")
         return httpx.Response(
             200,
-            json={"data": [{"index": 0, "embedding": [0.1, 0.2, 0.3]}]},
+            json={
+                "data": [{"index": 0, "embedding": [0.1, 0.2, 0.3]}],
+                "usage": {"prompt_tokens": 3, "total_tokens": 3},
+            },
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -152,6 +163,7 @@ async def test_openai_embedding_client_retries_transient_errors() -> None:
         embedding = await embedding_client.embed_query("FlashAttention")
 
     assert embedding == [0.1, 0.2, 0.3]
+    assert embedding_client.last_usage.input_tokens == 3
     assert len(requests) == 2
 
 
@@ -189,6 +201,23 @@ def test_parse_openai_embeddings_response_rejects_missing_indexes() -> None:
 def test_parse_openai_embeddings_response_rejects_missing_data() -> None:
     with pytest.raises(OpenAIEmbeddingError, match="data list"):
         parse_openai_embeddings_response({}, expected_count=1)
+
+
+def test_parse_openai_embeddings_usage_reads_prompt_tokens() -> None:
+    usage = parse_openai_embeddings_usage(
+        {"usage": {"prompt_tokens": 11, "total_tokens": 11}}
+    )
+
+    assert usage == EmbeddingUsage(input_tokens=11, total_tokens=11)
+
+
+def test_parse_openai_embeddings_usage_defaults_when_missing() -> None:
+    assert parse_openai_embeddings_usage({}) == EmbeddingUsage()
+
+
+def test_parse_openai_embeddings_usage_rejects_invalid_token_counts() -> None:
+    with pytest.raises(OpenAIEmbeddingError, match="token counts"):
+        parse_openai_embeddings_usage({"usage": {"prompt_tokens": -1}})
 
 
 def test_validate_embedding_dimension_rejects_wrong_size() -> None:
