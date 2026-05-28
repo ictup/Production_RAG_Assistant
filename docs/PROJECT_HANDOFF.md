@@ -241,6 +241,7 @@ docs/agentic_rag_extension.md
 - eval JSONL trend record
 - Agent support triage eval 数据集：`evals/datasets/agent_support_triage.jsonl`
 - Agent support triage eval runner：`python -m evals.agent_run`
+- Agent support triage Markdown 报告：`docs/agent_eval_report.md`
 - `eval-gate` 失败门禁
 - `agent-eval-gate` 失败门禁
 - 默认本地报告：`evals/reports/latest.json`
@@ -1026,7 +1027,7 @@ uv run pytest
 当前最近一次本地通过结果：
 
 ```text
-685 passed
+686 passed
 ```
 
 ### Pipeline Smoke
@@ -1249,6 +1250,7 @@ make eval-gate-openai   用 OpenAI embedding/generator 运行真实 eval gate
 make eval-trend         运行 eval summary 并追加 JSONL 趋势记录
 make agent-evals        运行 Agent support triage eval summary
 make agent-eval-gate    Agent eval 失败时返回非零退出码
+make agent-eval-report  生成 Agent support triage Markdown 报告
 make document-management-smoke
                         验证文档管理 API 上传、查询、reindex dry-run 和删除
 make embedding-smoke    验证当前 embedding provider 能返回正确维度

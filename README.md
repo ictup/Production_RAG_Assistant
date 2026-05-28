@@ -36,7 +36,7 @@ experiment.
 | Data layer | Postgres, pgvector, Alembic migrations, repositories, workspace foreign keys, audit logs, export job state transitions, and agent approval persistence |
 | Security and tenancy | API keys, roles, workspace access control, workspace archive write protection, request IDs, and secret-safe config checks |
 | Operations | Dockerfile, production-style Compose stack, export worker, config preflight, deployment runbook, secret manager mapping, and release checklist |
-| Quality system | Deterministic evals, smoke tests, CI, README/docs tests, release notes, and a reproducible validation checklist |
+| Quality system | Deterministic evals, Agent eval reports, smoke tests, CI, README/docs tests, release notes, and a reproducible validation checklist |
 | Observability | Structured logs, Prometheus metrics, Agent workflow metrics, provider latency, token usage, cost estimates, and database observability templates |
 
 ## Release Status
@@ -77,8 +77,8 @@ validated release gates.
 - Provider timeout, retry, error mapping, structured logs, Prometheus metrics,
   latency metrics, token metrics, and cost estimates.
 - Deterministic eval gate with JSONL datasets and trend recording.
-- Deterministic Agent support triage eval gate with 30 support cases and JSON
-  reports.
+- Deterministic Agent support triage eval gate with 30 support cases,
+  aggregate metrics, JSON reports, and a portfolio-friendly Markdown report.
 - Minimal web UI at `/app/` with sessions, history, SSE chat, document upload,
   reindex actions, workspace creation, editing, archive/restore actions, admin
   overview, workspace search, pagination, status filters, bulk archive/restore
@@ -213,7 +213,13 @@ Run the Agent support triage eval gate:
 uv run python -m evals.agent_run --format summary --fail-on-failure --no-output
 ```
 
-Current local baseline: `685 passed`.
+Generate the Agent support triage Markdown report:
+
+```powershell
+uv run python -m evals.agent_run --format summary --fail-on-failure --markdown-output docs/agent_eval_report.md
+```
+
+Current local baseline: `686 passed`.
 
 ## Configuration Model
 
@@ -463,6 +469,7 @@ The secret scan should only match intentional placeholders, never real keys.
 - [Project handoff and quick start](docs/PROJECT_HANDOFF.md)
 - [Portfolio presentation guide](docs/PORTFOLIO_PRESENTATION.md)
 - [Agentic RAG support workflow design](docs/agentic_rag_extension.md)
+- [Agent support triage eval report](docs/agent_eval_report.md)
 - [Configuration and secrets guide](docs/CONFIGURATION.md)
 - [Secret manager mapping](docs/SECRET_MANAGER_MAPPING.md)
 - [Deployment runbook](docs/DEPLOYMENT_RUNBOOK.md)

@@ -80,7 +80,8 @@ migration advice, and latency troubleshooting.
 
 ## Planned Next Steps
 
-1. Create the next release tag and release notes.
+1. Add a LangGraph runtime adapter while preserving the current tested API
+   contract.
 
 ## Step 2 Scope
 
@@ -238,3 +239,20 @@ fake historical ticket lookup, and fake approval persistence, then scores the
 response status, category, risk level, approval requirement, node sequence, tool
 sequence, citation validity, answer keywords, and approval reason keywords. CI
 now runs this Agent eval gate and uploads the JSON report artifact.
+
+## Step 12 Scope
+
+The twelfth implementation step turns the Agent eval gate into a portfolio and
+handoff artifact:
+
+```text
+docs/agent_eval_report.md
+python -m evals.agent_run --markdown-output docs/agent_eval_report.md
+```
+
+The Agent eval runner now calculates aggregate metrics for task success,
+category accuracy, risk accuracy, approval routing accuracy, tool selection,
+node sequencing, citation validity, unsafe action blocking, average tool calls,
+and p95 latency. The 30-case dataset marks high-risk requests as unsafe
+actions, and the Markdown report summarizes current results, coverage, and
+regression classes the gate is designed to catch.

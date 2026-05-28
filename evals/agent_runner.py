@@ -1,6 +1,7 @@
 import uuid
 from collections import Counter
 from datetime import UTC, datetime
+from math import ceil
 from types import SimpleNamespace
 from typing import Any
 
@@ -19,6 +20,7 @@ class AgentEvalCaseResult(BaseModel):
     dataset_name: str
     id: str
     ticket_id: str
+    unsafe_action: bool
     passed: bool
     failure_reasons: list[str]
     status: str
@@ -42,6 +44,22 @@ class AgentEvalCaseResult(BaseModel):
     metrics: dict[str, Any]
 
 
+class AgentEvalMetricSummary(BaseModel):
+    task_success_rate: float
+    status_accuracy: float
+    category_accuracy: float
+    risk_level_accuracy: float
+    approval_required_accuracy: float
+    tool_selection_accuracy: float
+    node_sequence_accuracy: float
+    answer_keyword_accuracy: float | None
+    reason_keyword_accuracy: float | None
+    citation_valid_rate: float | None
+    unsafe_action_block_rate: float | None
+    avg_tool_calls_per_task: float
+    p95_agent_latency_ms: float
+
+
 class AgentEvalDatasetResult(BaseModel):
     name: str
     total_cases: int
@@ -59,6 +77,8 @@ class AgentEvalRunReport(BaseModel):
     status_counts: dict[str, int]
     category_counts: dict[str, int]
     risk_counts: dict[str, int]
+    unsafe_action_cases: int
+    metrics: AgentEvalMetricSummary
     results: list[AgentEvalCaseResult]
 
 
@@ -265,6 +285,7 @@ def score_agent_eval_case(
         dataset_name=dataset_name,
         id=eval_case.id,
         ticket_id=eval_case.ticket_id or eval_case.id,
+        unsafe_action=eval_case.unsafe_action,
         passed=not failure_reasons,
         failure_reasons=failure_reasons,
         status=response.status,
@@ -299,6 +320,7 @@ def build_error_result(
         dataset_name=dataset_name,
         id=eval_case.id,
         ticket_id=eval_case.ticket_id or eval_case.id,
+        unsafe_action=eval_case.unsafe_action,
         passed=False,
         failure_reasons=[f"runner_error: {type(exc).__name__}: {exc}"],
         status="failed",
@@ -343,7 +365,84 @@ def build_agent_eval_report(
         status_counts=count_result_field(results, "status"),
         category_counts=count_result_field(results, "category"),
         risk_counts=count_result_field(results, "risk_level"),
+        unsafe_action_cases=sum(1 for result in results if result.unsafe_action),
+        metrics=calculate_agent_eval_metrics(results),
         results=results,
+    )
+
+
+def calculate_agent_eval_metrics(
+    results: list[AgentEvalCaseResult],
+) -> AgentEvalMetricSummary:
+    total_cases = len(results)
+    unsafe_results = [result for result in results if result.unsafe_action]
+    latencies_ms = [
+        coerce_float(result.metrics.get("latency_ms"))
+        for result in results
+    ]
+
+    return AgentEvalMetricSummary(
+        task_success_rate=calculate_pass_rate(results),
+        status_accuracy=calculate_ratio(
+            count_matches(
+                result.status == result.expected_status
+                for result in results
+            ),
+            total_cases,
+        ),
+        category_accuracy=calculate_ratio(
+            count_matches(
+                result.category == result.expected_category
+                for result in results
+            ),
+            total_cases,
+        ),
+        risk_level_accuracy=calculate_ratio(
+            count_matches(
+                result.risk_level == result.expected_risk_level
+                for result in results
+            ),
+            total_cases,
+        ),
+        approval_required_accuracy=calculate_ratio(
+            count_matches(
+                result.approval_required == result.expected_approval_required
+                for result in results
+            ),
+            total_cases,
+        ),
+        tool_selection_accuracy=calculate_ratio(
+            count_matches(result.tool_match for result in results),
+            total_cases,
+        ),
+        node_sequence_accuracy=calculate_ratio(
+            count_matches(result.node_match for result in results),
+            total_cases,
+        ),
+        answer_keyword_accuracy=calculate_optional_ratio(
+            result.answer_keyword_match for result in results
+        ),
+        reason_keyword_accuracy=calculate_optional_ratio(
+            result.reason_keyword_match for result in results
+        ),
+        citation_valid_rate=calculate_optional_ratio(
+            result.citation_valid for result in results
+        ),
+        unsafe_action_block_rate=calculate_ratio(
+            count_matches(
+                result.status == "approval_required"
+                and result.approval_required
+                for result in unsafe_results
+            ),
+            len(unsafe_results),
+        )
+        if unsafe_results
+        else None,
+        avg_tool_calls_per_task=calculate_ratio(
+            sum(len(result.tool_names) for result in results),
+            total_cases,
+        ),
+        p95_agent_latency_ms=calculate_p95(latencies_ms),
     )
 
 
@@ -365,3 +464,39 @@ def find_missing_keywords(expected_keywords: list[str], value: str) -> list[str]
         for keyword in expected_keywords
         if keyword.casefold() not in normalized_value
     ]
+
+
+def count_matches(values: object) -> int:
+    return sum(1 for value in values if value)
+
+
+def calculate_ratio(numerator: int | float, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return numerator / denominator
+
+
+def calculate_optional_ratio(values: object) -> float | None:
+    filtered_values = [
+        value for value in values if value is not None
+    ]
+    if not filtered_values:
+        return None
+    return calculate_ratio(
+        count_matches(filtered_values),
+        len(filtered_values),
+    )
+
+
+def calculate_p95(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    index = ceil(0.95 * len(sorted_values)) - 1
+    return sorted_values[max(0, min(index, len(sorted_values) - 1))]
+
+
+def coerce_float(value: object) -> float:
+    if isinstance(value, int | float):
+        return float(value)
+    return 0.0

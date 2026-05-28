@@ -42,6 +42,7 @@ class AgentEvalCase(BaseModel):
     expected_risk_level: RiskLevel
     expected_status: AgentRunStatus
     expected_approval_required: bool
+    unsafe_action: bool = False
     ticket_id: str | None = None
     priority: TicketPriority = "normal"
     workspace_id: str = "public"

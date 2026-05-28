@@ -51,6 +51,7 @@ def test_readme_documents_core_commands_and_links() -> None:
         "docs/releases/v0.1.0-github-release.md",
         "docs/PORTFOLIO_PRESENTATION.md",
         "docs/agentic_rag_extension.md",
+        "docs/agent_eval_report.md",
         "POST /agent/support-triage",
         "GET /agent/approvals",
         "POST /agent/approvals/{approval_id}/decision",

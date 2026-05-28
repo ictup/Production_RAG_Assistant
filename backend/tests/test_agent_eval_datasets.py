@@ -81,6 +81,7 @@ def test_load_agent_eval_dataset_loads_30_support_cases() -> None:
     assert sum(
         1 for eval_case in dataset.cases if eval_case.expected_approval_required
     ) == 10
+    assert sum(1 for eval_case in dataset.cases if eval_case.unsafe_action) == 10
     assert all(
         eval_case.expected_nodes == APPROVAL_AGENT_NODES
         for eval_case in dataset.cases

@@ -5,8 +5,10 @@ import pytest
 from evals.agent_loaders import load_agent_eval_dataset
 from evals.agent_models import AgentEvalCase
 from evals.agent_run import (
+    format_agent_report_markdown,
     format_agent_report_summary,
     serialize_agent_report,
+    write_agent_markdown_report,
     write_agent_report,
 )
 from evals.agent_runner import (
@@ -17,6 +19,7 @@ from evals.agent_runner import (
 )
 
 MAKEFILE_PATH = Path("Makefile")
+AGENT_EVAL_REPORT_PATH = Path("docs/agent_eval_report.md")
 
 
 @pytest.mark.asyncio
@@ -118,6 +121,14 @@ async def test_run_agent_eval_dataset_builds_full_report() -> None:
         "low": 8,
         "medium": 12,
     }
+    assert report.unsafe_action_cases == 10
+    assert report.metrics.task_success_rate == 1.0
+    assert report.metrics.category_accuracy == 1.0
+    assert report.metrics.risk_level_accuracy == 1.0
+    assert report.metrics.tool_selection_accuracy == 1.0
+    assert report.metrics.node_sequence_accuracy == 1.0
+    assert report.metrics.unsafe_action_block_rate == 1.0
+    assert report.metrics.citation_valid_rate == 1.0
 
 
 @pytest.mark.asyncio
@@ -142,15 +153,24 @@ async def test_agent_report_formatters_and_writer(tmp_path: Path) -> None:
         ],
     )
     output_path = tmp_path / "reports" / "agent.json"
+    markdown_output_path = tmp_path / "reports" / "agent.md"
 
     write_agent_report(report, output_path)
+    write_agent_markdown_report(report, markdown_output_path)
     report_json = serialize_agent_report(report)
     summary = format_agent_report_summary(report)
+    markdown = format_agent_report_markdown(report)
 
     assert output_path.exists()
+    assert markdown_output_path.exists()
     assert '"total_cases": 1' in report_json
+    assert '"metrics": {' in report_json
     assert "agent eval cases: 1/1 passed (100.0%)" in summary
     assert "- statuses: finalized=1" in summary
+    assert "tools=100.0%" in summary
+    assert "# Agent Support Triage Eval Report" in markdown
+    assert "| Task success rate | 100.0% |" in markdown
+    assert "Current deterministic run has 0 failing cases" in markdown
 
 
 def test_makefile_exposes_agent_eval_targets() -> None:
@@ -159,4 +179,15 @@ def test_makefile_exposes_agent_eval_targets() -> None:
     assert "agent-evals:" in makefile
     assert "python -m evals.agent_run --format summary" in makefile
     assert "agent-eval-gate:" in makefile
+    assert "agent-eval-report:" in makefile
+    assert "--markdown-output docs/agent_eval_report.md" in makefile
     assert "--fail-on-failure" in makefile
+
+
+def test_agent_eval_report_doc_tracks_current_metrics() -> None:
+    report_doc = AGENT_EVAL_REPORT_PATH.read_text(encoding="utf-8")
+
+    assert "# Agent Support Triage Eval Report" in report_doc
+    assert "| Total cases | 30 |" in report_doc
+    assert "| Task success rate | 100.0% |" in report_doc
+    assert "| Unsafe action block rate | 100.0% |" in report_doc
